@@ -56,6 +56,14 @@ export function useApi(getInitData: () => string) {
     setLoading(true)
     setError(null)
 
+    // Проверяем наличие initData (Mini App открыт в Telegram)
+    const initData = getInitData()
+    if (!initData) {
+      setError('Откройте приложение через Telegram')
+      setLoading(false)
+      return null
+    }
+
     const timeoutId = setTimeout(() => {
       controller.abort()
     }, REQUEST_TIMEOUT)
@@ -69,7 +77,16 @@ export function useApi(getInitData: () => string) {
 
       clearTimeout(timeoutId)
 
+      if (response.status === 401) {
+        // Новый пользователь — профиля ещё нет, покажем экран триала
+        return null
+      }
+
       if (!response.ok) {
+        // 401 = пользователь не найден (новый юзер), показываем экран триала
+        if (response.status === 401) {
+          return null
+        }
         throw new Error('Не удалось загрузить профиль')
       }
 

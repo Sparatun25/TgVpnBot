@@ -44,6 +44,23 @@ export default function App() {
     )
   }
 
+  // Если профиль не загружен и нет ошибки — новый пользователь, показываем экран триала
+  if (!profile && !error && !loading) {
+    return (
+      <div className="app">
+        <main className="app-content">
+          <VpnScreen
+            hasActiveSubscription={false}
+            hasUsedTrial={false}
+            connectionUrl={null}
+            onActivateTrial={handleActivateTrial}
+            trialExpiresAt={null}
+          />
+        </main>
+      </div>
+    )
+  }
+
   if (error && !profile) {
     return (
       <div className="error-screen">

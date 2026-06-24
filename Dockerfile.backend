@@ -34,14 +34,14 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Копирование кода приложения
 COPY . .
 
+# Скрипт запуска (копируем ДО переключения пользователя)
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
 # Создание non-root пользователя
 RUN useradd -m -u 1000 -s /bin/bash appuser && \
     chown -R appuser:appuser /app
 USER appuser
-
-# Скрипт запуска
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
 
 EXPOSE 8000
 

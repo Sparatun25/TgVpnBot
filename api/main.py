@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.routes import router
+from api.admin_ui import router as admin_ui_router
 from core.config import settings
 
 # Настройка логирования
@@ -48,6 +49,7 @@ app.add_middleware(
 
 # Подключаем роутеры
 app.include_router(router)
+app.include_router(admin_ui_router)
 
 
 # Обработчики ошибок

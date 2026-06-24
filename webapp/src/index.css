@@ -348,6 +348,71 @@ body {
   line-height: 1.5;
 }
 
+.vpn-status-copy {
+  margin-top: 12px;
+  padding: 8px 16px;
+  background: var(--onyx-gray);
+  border: 1px solid var(--onyx-light);
+  border-radius: 8px;
+  color: var(--onyx-text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.vpn-status-copy:hover {
+  background: var(--onyx-light);
+}
+
+/* Expired trial */
+.trial-expired {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  text-align: center;
+  padding: 32px 24px;
+}
+
+.trial-expired-icon {
+  font-size: 64px;
+  margin-bottom: 24px;
+}
+
+.trial-expired-title {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.trial-expired-subtitle {
+  font-size: 15px;
+  color: var(--onyx-text-muted);
+  margin-bottom: 32px;
+  line-height: 1.5;
+}
+
+.trial-expired-button {
+  width: 100%;
+  max-width: 320px;
+  padding: 18px 32px;
+  background: var(--onyx-accent);
+  color: var(--onyx-black);
+  border: none;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.trial-expired-button:hover {
+  background: var(--onyx-accent-hover);
+  transform: translateY(-2px);
+}
+
 /* Trial Info */
 .trial-info {
   margin-top: 32px;

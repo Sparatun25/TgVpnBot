@@ -27,26 +27,41 @@ export function VpnScreen({
     setShowInstructions(true)
   }
 
-  const handleCopyKey = async () => {
+  const handleConnect = async () => {
     if (!connectionUrl) return
 
     try {
       await navigator.clipboard.writeText(connectionUrl)
-      setToastMessage('Конфигурация скопирована!')
-      setShowToast(true)
       setIsConnecting(true)
 
+      // Даём время на копирование, потом открываем Amnezia
       setTimeout(() => {
         setIsConnecting(false)
         setIsConnected(true)
-      }, 1500)
+        // Пытаемся открыть Amnezia — она подхватит ключ из буфера
+        window.location.href = 'amnezia://import'
+        setToastMessage('Ключ скопирован! Открываем Amnezia...')
+        setShowToast(true)
+      }, 800)
+    } catch {
+      setToastMessage('Ошибка копирования — скопируйте ключ вручную')
+      setShowToast(true)
+    }
+  }
+
+  const handleCopyKeyAgain = async () => {
+    if (!connectionUrl) return
+    try {
+      await navigator.clipboard.writeText(connectionUrl)
+      setToastMessage('Ключ скопирован!')
+      setShowToast(true)
     } catch {
       setToastMessage('Ошибка копирования')
       setShowToast(true)
     }
   }
 
-  // Экран предложения триала
+  // Экран предложения триала (новый пользователь, ни разу не активировал)
   if (!hasActiveSubscription && !hasUsedTrial && !showInstructions) {
     return (
       <div className="vpn-screen">
@@ -70,6 +85,27 @@ export function VpnScreen({
             Попробовать 3 дня бесплатно
           </button>
           <p className="trial-banner-note">Один триал на аккаунт</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Триал закончился, подписки нет — предлагаем оплатить
+  if (!hasActiveSubscription && hasUsedTrial && !showInstructions) {
+    return (
+      <div className="vpn-screen">
+        <div className="trial-expired">
+          <div className="trial-expired-icon">🐱</div>
+          <h2 className="trial-expired-title">Триал закончился</h2>
+          <p className="trial-expired-subtitle">
+            Бесплатный период завершился. Оформите подписку, чтобы продолжить пользоваться OnyxVpn.
+          </p>
+          <button className="trial-expired-button" onClick={() => {
+            // Переключаем на вкладку тарифов через кастомное событие
+            window.dispatchEvent(new CustomEvent('switch-tab', { detail: 'tariffs' }))
+          }}>
+            Выбрать тариф
+          </button>
         </div>
       </div>
     )
@@ -126,7 +162,7 @@ export function VpnScreen({
             {!isConnected ? (
               <button
                 className={`connect-button ${isConnecting ? 'connect-button-loading' : ''}`}
-                onClick={handleCopyKey}
+                onClick={handleConnect}
                 disabled={isConnecting}
               >
                 {isConnecting ? (
@@ -155,8 +191,11 @@ export function VpnScreen({
                 <div className="vpn-status-text">
                   <div className="vpn-status-title">VPN Готов к работе</div>
                   <div className="vpn-status-subtitle">
-                    Просто откройте приложение Amnezia — оно само предложит импортировать ключ
+                    Откройте Amnezia → нажмите «Добавить сервер» → «Вставить из буфера»
                   </div>
+                  <button className="vpn-status-copy" onClick={handleCopyKeyAgain}>
+                    Скопировать ключ снова
+                  </button>
                 </div>
               </div>
             )}

@@ -12,6 +12,7 @@ export interface ProfileData {
     expires_at: string | null
     connection_url: string | null
   }
+  has_used_trial: boolean
 }
 
 interface TrialResponse {

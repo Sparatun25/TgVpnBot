@@ -97,6 +97,14 @@ async def get_profile(
     sub_result = await session.execute(sub_query)
     active_sub = sub_result.scalar_one_or_none()
 
+    # Проверяем, использовал ли пользователь триал когда-либо
+    trial_query = select(Subscription).where(
+        Subscription.user_id == user.id,
+        Subscription.plan_type == "trial",
+    )
+    trial_result = await session.execute(trial_query)
+    has_used_trial = trial_result.scalar_one_or_none() is not None
+
     return {
         "balance": user.balance,
         "referral_code": user.referral_code,
@@ -104,8 +112,9 @@ async def get_profile(
             "active": active_sub is not None,
             "plan_type": active_sub.plan_type if active_sub else None,
             "expires_at": active_sub.expires_at.isoformat() if active_sub else None,
-            "connection_url": None,  # TODO: вернуть из Amnezia API
+            "connection_url": active_sub.connection_url if active_sub else None,
         },
+        "has_used_trial": has_used_trial,
     }
 
 
@@ -178,6 +187,7 @@ async def activate_trial(
         plan_type="trial",
         expires_at=expires_at,
         is_active=True,
+        connection_url=connection_url,
     )
     session.add(subscription)
     await session.commit()

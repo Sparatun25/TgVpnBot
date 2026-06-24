@@ -17,13 +17,20 @@ export default function App() {
 
   useEffect(() => {
     loadProfile()
+
+    // Слушаем событие переключения вкладки
+    const handleSwitchTab = (e: CustomEvent) => {
+      setActiveTab(e.detail)
+    }
+    window.addEventListener('switch-tab', handleSwitchTab as EventListener)
+    return () => window.removeEventListener('switch-tab', handleSwitchTab as EventListener)
   }, [])
 
   const loadProfile = async () => {
     const data = await getProfile()
     if (data) {
       setProfile(data)
-      setHasUsedTrial(data.subscription.plan_type === 'trial')
+      setHasUsedTrial(data.has_used_trial)
     }
   }
 

@@ -40,6 +40,21 @@ class Settings(BaseSettings):
     notification_24h_before: int = 24
     notification_1h_before: int = 1
 
+    @field_validator("bot_admin_ids", mode="before")
+    @classmethod
+    def parse_admin_ids(cls, v) -> list[int]:
+        """Парсит строку/число в список ID администраторов."""
+        if isinstance(v, list):
+            return [int(x) for x in v]
+        if isinstance(v, int):
+            return [v]
+        if isinstance(v, str):
+            v = v.strip().strip("[]")
+            if not v:
+                return []
+            return [int(x.strip()) for x in v.split(",") if x.strip()]
+        return []
+
     @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, v: str) -> str:

@@ -4,13 +4,14 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from api.auth import get_current_user_tg_id
+from api.auth import get_current_user_tg_id, security
 from core.config import settings
 from core.db import get_session
 from database.models import Payment, Subscription, User
@@ -26,14 +27,43 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 # ─────────────────────────────────────────────────────────
 
 async def require_admin(
-    tg_id: Annotated[int, Depends(get_current_user_tg_id)],
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> int:
     """
     Зависимость: пропускает только администраторов из bot_admin_ids.
 
-    Использует initData-валидацию Telegram (через get_current_user_tg_id),
-    затем проверяет, что tg_id есть в списке админов.
+    Поддерживает два способа авторизации:
+    1. Telegram Mini App: Authorization: Bearer <initData> — валидация подписи
+    2. Браузер (Login Widget): X-Admin-Tg-Id: <tg_id> — проверка по списку админов
     """
+    tg_id = None
+
+    # Способ 1: initData от Mini App
+    if credentials and credentials.credentials:
+        token = credentials.credentials
+        # Если токен — число, это tg_id от Login Widget
+        if token.isdigit():
+            tg_id = int(token)
+        else:
+            # Иначе это initData — валидируем
+            try:
+                tg_id = await get_current_user_tg_id(request, credentials)
+            except HTTPException:
+                pass
+
+    # Способ 2: header X-Admin-Tg-Id от Login Widget
+    if tg_id is None:
+        admin_tg_id_header = request.headers.get("X-Admin-Tg-Id")
+        if admin_tg_id_header and admin_tg_id_header.isdigit():
+            tg_id = int(admin_tg_id_header)
+
+    if tg_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Необходима авторизация",
+        )
+
     if tg_id not in settings.bot_admin_ids:
         logger.warning("Попытка доступа к админке: tg_id=%s", tg_id)
         raise HTTPException(

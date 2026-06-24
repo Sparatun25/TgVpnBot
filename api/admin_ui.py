@@ -1,9 +1,82 @@
 """Админ-панель: веб-интерфейс."""
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException, status
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
+
+from api.auth import validate_login_widget
+from core.config import settings
 
 router = APIRouter(tags=["admin-ui"])
+
+
+class TelegramLoginData(BaseModel):
+    """Данные от Telegram Login Widget."""
+    id: int
+    first_name: str
+    last_name: str | None = None
+    username: str | None = None
+    photo_url: str | None = None
+    auth_date: int
+    hash: str
+
+
+@router.post("/api/admin/login")
+async def admin_login(data: TelegramLoginData):
+    """
+    Валидация Telegram Login Widget для админки.
+
+    Возвращает токен (tg_id) если пользователь — админ.
+    """
+    # Преобразуем в словарь для валидации
+    data_dict = data.model_dump()
+
+    bot_token = settings.telegram_bot_token
+    if not bot_token:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="TELEGRAM_BOT_TOKEN не настроен",
+        )
+
+    try:
+        tg_id = validate_login_widget(data_dict, bot_token.get_secret_value())
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Ошибка валидации: {str(e)}",
+        )
+
+    # Проверяем, что пользователь — админ
+    if tg_id not in settings.bot_admin_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Доступ запрещён: вы не администратор",
+        )
+
+    return {"tg_id": tg_id, "message": "Авторизация успешна"}
+
+
+@router.get("/api/admin/config")
+async def admin_config():
+    """
+    Конфиг для Telegram Login Widget.
+
+    Возвращает bot_username для виджета.
+    """
+    # Извлекаем username из токена (формат: "123456:ABC-DEF...")
+    # Или берём из webapp_url
+    bot_token = settings.telegram_bot_token
+    if not bot_token:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="TELEGRAM_BOT_TOKEN не настроен",
+        )
+
+    # Для виджета нужен username бота
+    # Временное решение: возвращаем заглушку, нужно будет настроить
+    return {
+        "bot_username": "onyxvpnbot",  # TODO: вынести в конфиг
+    }
 
 
 @router.get("/admin", response_class=HTMLResponse)
@@ -357,6 +430,93 @@ async def admin_ui(request: Request):
     <script type="text/babel">
         const { useState, useEffect } = React;
 
+        function LoginScreen() {
+            const [error, setError] = useState('');
+
+            const handleLogin = async (data) => {
+                try {
+                    const res = await fetch('/api/admin/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data),
+                    });
+
+                    if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.detail || 'Ошибка авторизации');
+                    }
+
+                    const result = await res.json();
+                    sessionStorage.setItem('admin_tg_id', result.tg_id);
+                    window.location.reload();
+                } catch (err) {
+                    setError(err.message);
+                }
+            };
+
+            useEffect(() => {
+                const script = document.createElement('script');
+                script.src = 'https://telegram.org/js/telegram-widget.js?22';
+                script.setAttribute('data-telegram-login', 'onyxvpnbot');
+                script.setAttribute('data-size', 'large');
+                script.setAttribute('data-onauth', 'onTelegramAuth(user)');
+                script.setAttribute('data-request-access', 'write');
+                document.getElementById('telegram-login').appendChild(script);
+
+                window.onTelegramAuth = handleLogin;
+
+                return () => {
+                    delete window.onTelegramAuth;
+                };
+            }, []);
+
+            return (
+                <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minHeight: '100vh',
+                    padding: '24px',
+                }}>
+                    <div style={{
+                        background: 'var(--onyx-dark)',
+                        border: '1px solid var(--onyx-gray)',
+                        borderRadius: '24px',
+                        padding: '48px',
+                        maxWidth: '480px',
+                        width: '100%',
+                        textAlign: 'center',
+                    }}>
+                        <h1 style={{
+                            fontSize: '32px',
+                            fontWeight: 700,
+                            background: 'linear-gradient(135deg, var(--onyx-accent), var(--onyx-accent-hover))',
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                            marginBottom: '8px',
+                        }}>OnyxVpn Admin</h1>
+                        <p style={{ color: 'var(--onyx-text-muted)', fontSize: '14px', marginBottom: '32px' }}>
+                            Авторизуйтесь через Telegram
+                        </p>
+                        <div id="telegram-login" style={{ marginBottom: '24px' }}></div>
+                        {error && (
+                            <div style={{
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                border: '1px solid var(--onyx-error)',
+                                borderRadius: '12px',
+                                padding: '16px',
+                                color: 'var(--onyx-error)',
+                                marginTop: '16px',
+                            }}>
+                                {error}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
         function AdminPanel() {
             const [metrics, setMetrics] = useState(null);
             const [subscriptions, setSubscriptions] = useState([]);
@@ -368,12 +528,18 @@ async def admin_ui(request: Request):
             const [statusFilter, setStatusFilter] = useState('');
             const [modal, setModal] = useState(null);
 
+            const adminTgId = sessionStorage.getItem('admin_tg_id');
             const initData = window.Telegram?.WebApp?.initData || '';
 
             const headers = {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${initData}`,
             };
+
+            if (adminTgId) {
+                headers['X-Admin-Tg-Id'] = adminTgId;
+            } else if (initData) {
+                headers['Authorization'] = `Bearer ${initData}`;
+            }
 
             useEffect(() => {
                 loadMetrics();
@@ -458,8 +624,22 @@ async def admin_ui(request: Request):
             return (
                 <div className="admin-container">
                     <div className="admin-header">
-                        <h1 className="admin-title">OnyxVpn Admin</h1>
-                        <p className="admin-subtitle">Панель управления подписками</p>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                            <div>
+                                <h1 className="admin-title">OnyxVpn Admin</h1>
+                                <p className="admin-subtitle">Панель управления подписками</p>
+                            </div>
+                            <button
+                                className="btn btn-danger"
+                                style={{ fontSize: '12px', padding: '6px 12px' }}
+                                onClick={() => {
+                                    sessionStorage.removeItem('admin_tg_id');
+                                    window.location.reload();
+                                }}
+                            >
+                                Выйти
+                            </button>
+                        </div>
                     </div>
 
                     {metrics && (
@@ -626,7 +806,19 @@ async def admin_ui(request: Request):
             );
         }
 
-        ReactDOM.createRoot(document.getElementById('root')).render(<AdminPanel />);
+        function App() {
+            const adminTgId = sessionStorage.getItem('admin_tg_id');
+            const initData = window.Telegram?.WebApp?.initData;
+
+            // Если нет ни tg_id от Login Widget, ни initData от Mini App — показываем экран входа
+            if (!adminTgId && !initData) {
+                return <LoginScreen />;
+            }
+
+            return <AdminPanel />;
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
 </body>
 </html>

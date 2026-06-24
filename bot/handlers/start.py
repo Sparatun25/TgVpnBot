@@ -2,7 +2,7 @@
 
 import logging
 from aiogram import Router, F
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.markdown import hbold, hitalic
 from sqlalchemy import select

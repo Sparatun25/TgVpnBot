@@ -1,8 +1,9 @@
-"""Валидация Telegram WebApp initData."""
+"""Валидация Telegram WebApp initData и Login Widget."""
 
 import hashlib
 import hmac
 import logging
+import time
 from urllib.parse import parse_qsl
 
 from fastapi import Depends, HTTPException, Request, status
@@ -139,3 +140,57 @@ async def get_current_user_tg_id(
         ) from e
 
     return tg_id
+
+
+def validate_login_widget(data: dict[str, str], bot_token: str) -> int:
+    """
+    Валидировать данные от Telegram Login Widget.
+
+    Алгоритм:
+    1. Проверяем наличие обязательных полей (id, first_name, last_name, username, photo_url, auth_date, hash).
+    2. Проверяем, что auth_date не устарел (не старше 5 минут).
+    3. Считаем secret_key = SHA256(bot_token).
+    4. Сортируем все поля кроме hash, склеиваем в строку.
+    5. Считаем HMAC-SHA256 этой строки с secret_key.
+    6. Сравниваем с hash.
+
+    Returns:
+        Telegram ID пользователя.
+
+    Raises:
+        ValueError: Если валидация не прошла.
+    """
+    # Обязательные поля
+    required_fields = ["id", "auth_date", "hash"]
+    for field in required_fields:
+        if field not in data:
+            raise ValueError(f"Отсутствует поле {field}")
+
+    # Проверяем, что auth_date не устарел (5 минут)
+    auth_date = int(data["auth_date"])
+    current_time = int(time.time())
+    if current_time - auth_date > 300:  # 5 минут
+        raise ValueError("auth_date устарел")
+
+    # Извлекаем hash
+    received_hash = data.pop("hash")
+
+    # Считаем secret_key = SHA256(bot_token)
+    secret_key = hashlib.sha256(bot_token.encode("utf-8")).digest()
+
+    # Сортируем все поля кроме hash и склеиваем
+    sorted_pairs = sorted(data.items(), key=lambda x: x[0])
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted_pairs)
+
+    # Считаем HMAC-SHA256
+    check_hash = hmac.new(
+        secret_key,
+        data_check_string.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+    # Сравниваем
+    if not hmac.compare_digest(check_hash, received_hash):
+        raise ValueError("Неверный hash Login Widget")
+
+    return int(data["id"])

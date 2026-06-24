@@ -78,16 +78,13 @@ export function useApi(getInitData: () => string) {
 
       clearTimeout(timeoutId)
 
-      if (response.status === 401) {
-        // Новый пользователь — профиля ещё нет, покажем экран триала
+      // 401 = нет initData / невалидный токен
+      // 404 = пользователь не найден в БД (новый юзер) — показываем экран триала
+      if (response.status === 401 || response.status === 404) {
         return null
       }
 
       if (!response.ok) {
-        // 401 = пользователь не найден (новый юзер), показываем экран триала
-        if (response.status === 401) {
-          return null
-        }
         throw new Error('Не удалось загрузить профиль')
       }
 

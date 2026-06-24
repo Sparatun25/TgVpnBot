@@ -29,16 +29,108 @@
 TgVpnBot/
 ├── bot/            # aiogram бот (handlers, keyboards, middlewares)
 ├── api/            # FastAPI (REST для Mini App + админка)
-├── app/            # Mini App фронтенд (React + TS)
+├── webapp/         # Mini App фронтенд (React + TS + Vite)
 ├── core/           # общие модули: БД, конфиг, модели, утилиты
 ├── services/       # бизнес-логика: Amnezia API, платежи, триалы
+├── database/       # SQLAlchemy модели (User, Subscription, Payment)
+├── docker/         # nginx.conf для фронтенда
 ├── docs/           # доки, спеки
+├── docker-compose.yml
+├── Dockerfile.backend
+├── Dockerfile.frontend
 └── CLAUDE.md       # этот файл
 ```
 
-- `core/` — общие модели SQLAlchemy, конфиг (pydantic-settings), базовые утилиты.
-- `services/` — инкапсулирует внешние вызовы: генерация ключей Amnezia, оплата СБП, отправка уведомлений.
-- Бот и API используют одну БД и одни модели из `core/`.
+### Поток данных
+
+```
+Пользователь → Telegram Bot (/start)
+  ↓
+Telegram Mini App (webapp/)
+  ↓ HTTPS → nginx (порт 3000)
+  ↓ /api/* → FastAPI backend (порт 8000)
+  ↓ PostgreSQL (порт 5432)
+  ↓ Amnezia VPN (Docker, сеть amnezia-network)
+```
+
+### Компоненты
+
+- **bot/** — aiogram 3.x, команда /start создаёт пользователя в БД и показывает кнопку Mini App
+- **api/** — FastAPI, эндпоинты:
+  - `GET /api/profile` — профиль пользователя (баланс, подписка, connection_url)
+  - `POST /api/subscription/trial` — активация триала (создаёт ключ Amnezia)
+  - `POST /api/payment/create` — создание платежа через ЮKassa
+  - `POST /api/payment/webhook` — webhook от ЮKassa
+  - `GET /admin` — HTML админ-панели с Login Widget
+  - `POST /api/admin/login` — авторизация через Login Widget
+  - `GET /api/admin/metrics` — метрики для админки
+  - `GET /api/admin/subscriptions` — список подписок
+- **webapp/** — React + TypeScript + Vite:
+  - `src/App.tsx` — главный компонент с табами (VPN, Тарифы, Баланс, Профиль)
+  - `src/components/VpnScreen.tsx` — экран VPN с кнопкой активации триала и подключения
+  - `src/hooks/useApi.ts` — хук для API запросов с авторизацией через initData
+  - `src/hooks/useTelegram.ts` — хук для работы с Telegram WebApp SDK
+- **core/** — общие модули:
+  - `config.py` — pydantic-settings конфиг (BOT_TOKEN, DATABASE_URL, WEBAPP_URL)
+  - `db.py` — async SQLAlchemy сессия
+- **database/** — SQLAlchemy модели:
+  - `User` — telegram_id, username, balance, referral_code
+  - `Subscription` — user_id, uuid, plan_type, expires_at, is_active, **connection_url**
+  - `Payment` — user_id, amount, payment_id, status
+- **services/** — бизнес-логика:
+  - `amnezia.py` — создание/отзыв ключей через Docker exec в контейнер amnezia-vpn
+  - `payment_sbp.py` — интеграция с ЮKassa СБП
+
+### Авторизация
+
+**Mini App (в Telegram):**
+- Telegram WebApp SDK передаёт `initData` (подписанная строка с user data)
+- Фронтенд отправляет `Authorization: Bearer <initData>`
+- Бэкенд валидирует через HMAC-SHA256 с ключом `HMAC-SHA256("WebAppData", bot_token)`
+- Извлекает `tg_id` из поля `user` в initData
+
+**Админка (в браузере):**
+- Telegram Login Widget (отдельный виджет для браузеров)
+- Пользователь нажимает кнопку "Войти через Telegram"
+- Виджет возвращает `{id, first_name, last_name, username, photo_url, auth_date, hash}`
+- Бэкенд валидирует через HMAC-SHA256 с ключом `SHA256(bot_token)` (другой алгоритм!)
+- Проверяет `auth_date` (не старше 5 минут)
+- Проверяет, что `tg_id` есть в `BOT_ADMIN_IDS`
+- Сохраняет `tg_id` в sessionStorage, отправляет в заголовке `X-Admin-Tg-Id`
+
+### Docker-контейнеры
+
+```yaml
+postgres:       # PostgreSQL 16, порт 5432
+backend:        # FastAPI + aiogram, порт 8000, сеть onyxvpn-network + amnezia-network
+frontend:       # nginx со статикой React, порт 3000, сеть onyxvpn-network
+amnezia-vpn:    # внешний контейнер (не в docker-compose), сеть amnezia-network
+```
+
+### Переменные окружения (.env)
+
+```bash
+BOT_TOKEN=...                    # Токен Telegram бота (обязательный)
+BOT_ADMIN_IDS=123,456            # Список ID администраторов через запятую
+DATABASE_URL=postgresql+asyncpg://...
+WEBAPP_URL=https://onyxvpnbot.ru # URL Mini App (для кнопки в боте)
+AMNEZIA_API_URL=http://localhost:8080
+AMNEZIA_API_KEY=...
+YUKASSA_SHOP_ID=...
+YUKASSA_SECRET_KEY=...
+```
+
+### База данных
+
+**Важно:** Alembic не настроен. При изменении моделей нужно вручную выполнять SQL:
+```sql
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS connection_url VARCHAR(1024);
+```
+
+Или пересоздавать таблицы (потеря данных!):
+```bash
+docker exec -it onyxvpn-postgres psql -U postgres -d onyxvpn -c "DROP TABLE ..."
+```
 
 ---
 

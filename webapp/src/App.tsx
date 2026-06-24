@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTelegram } from './hooks/useTelegram'
-import { useApi } from './hooks/useApi'
+import { useApi, ProfileData } from './hooks/useApi'
 import { VpnScreen } from './components/VpnScreen'
 import { TariffsScreen } from './components/TariffsScreen'
 import { BalanceScreen } from './components/BalanceScreen'
@@ -8,19 +8,8 @@ import { ProfileScreen } from './components/ProfileScreen'
 
 type Tab = 'vpn' | 'tariffs' | 'balance' | 'profile'
 
-interface ProfileData {
-  balance: number
-  referral_code: string
-  subscription: {
-    active: boolean
-    plan_type: string | null
-    expires_at: string | null
-    connection_url: string | null
-  }
-}
-
 export default function App() {
-  const { tg, user, getInitData } = useTelegram()
+  const { user, getInitData } = useTelegram()
   const { loading, error, getProfile, activateTrial } = useApi(getInitData)
   const [activeTab, setActiveTab] = useState<Tab>('vpn')
   const [profile, setProfile] = useState<ProfileData | null>(null)
@@ -77,26 +66,26 @@ export default function App() {
       <main className="app-content">
         {activeTab === 'vpn' && (
           <VpnScreen
-            hasActiveSubscription={profile?.subscription.active || false}
+            hasActiveSubscription={profile?.subscription.active ?? false}
             hasUsedTrial={hasUsedTrial}
-            connectionUrl={profile?.subscription.connection_url}
+            connectionUrl={profile?.subscription.connection_url ?? null}
             onActivateTrial={handleActivateTrial}
-            trialExpiresAt={profile?.subscription.expires_at}
+            trialExpiresAt={profile?.subscription.expires_at ?? null}
           />
         )}
 
         {activeTab === 'tariffs' && (
-          <TariffsScreen balance={profile?.balance || 0} />
+          <TariffsScreen balance={profile?.balance ?? 0} />
         )}
 
         {activeTab === 'balance' && (
-          <BalanceScreen balance={profile?.balance || 0} />
+          <BalanceScreen balance={profile?.balance ?? 0} />
         )}
 
         {activeTab === 'profile' && (
           <ProfileScreen
             user={user}
-            subscriptionExpiresAt={profile?.subscription.expires_at}
+            subscriptionExpiresAt={profile?.subscription.expires_at ?? null}
             referralCode={profile?.referral_code}
           />
         )}

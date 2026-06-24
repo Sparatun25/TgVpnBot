@@ -7,7 +7,7 @@ interface BalanceScreenProps {
   onBalanceUpdate?: () => void
 }
 
-export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) {
+export function BalanceScreen({ balance }: BalanceScreenProps) {
   const { getInitData } = useTelegram()
   const { createPayment, loading, error } = useApi(getInitData)
   const [amount, setAmount] = useState('')

@@ -3,8 +3,9 @@ import { useState, useCallback, useRef } from 'react'
 const API_BASE = '/api'
 const REQUEST_TIMEOUT = 30000 // 30 секунд
 
-interface ProfileData {
+export interface ProfileData {
   balance: number
+  referral_code: string
   subscription: {
     active: boolean
     plan_type: string | null

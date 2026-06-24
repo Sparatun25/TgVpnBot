@@ -86,28 +86,138 @@ Telegram Mini App (webapp/)
 **Архитектура:**
 - Контейнер `amnezia-awg2` (образ `amnezia-awg2`) работает на том же сервере
 - Порт: `45019/udp`
-- Конфиг: `/opt/amnezia/awg/awg0.conf`
-- Клиенты: `/opt/amnezia/awg/clientsTable` (JSON файл)
-- Ключи сервера: `/opt/amnezia/awg/wireguard_server_private_key.key`, `wireguard_server_public_key.key`, `wireguard_psk.key`
+- Подсеть клиентов: `10.8.1.0/24`
+- Конфиг сервера: `/opt/amnezia/awg/awg0.conf`
+- Список клиентов: `/opt/amnezia/awg/clientsTable` (JSON массив)
+- Ключи сервера:
+  - `/opt/amnezia/awg/wireguard_server_private_key.key` — приватный ключ сервера
+  - `/opt/amnezia/awg/wireguard_server_public_key.key` — публичный ключ сервера
+  - `/opt/amnezia/awg/wireguard_psk.key` — preshared key (одинаковый для всех клиентов)
 
-**Процесс создания ключа:**
+**Структура awg0.conf:**
+```ini
+[Interface]
+PrivateKey = <server_private_key>
+Address = 10.8.1.0/24
+ListenPort = 45019
+# Параметры обфускации AmneziaWG (защита от DPI)
+Jc = 5          # Junk packet count (1-128)
+Jmin = 10       # Junk packet min size
+Jmax = 50       # Junk packet max size
+S1 = 120        # Packet size init
+S2 = 44         # Packet size response
+S3 = 16         # Padding size init
+S4 = 12         # Padding size response
+H1 = 400426253-669804646   # Hash seeds (4 штуки)
+H2 = 887382463-1534683374
+H3 = 1625699604-1838847236
+H4 = 1879377953-2008054664
+
+[Peer]
+PublicKey = <client_public_key>
+PresharedKey = <psk_key>
+AllowedIPs = 10.8.1.1/32
+```
+
+**Структура clientsTable:**
+```json
+[
+  {
+    "clientId": "<client_public_key>",
+    "userData": {
+      "clientName": "OnyxVpn user 123",
+      "creationDate": "Wed Jun 25 12:34:56 2026"
+    }
+  }
+]
+```
+
+**Процесс создания ключа (services/amnezia.py):**
 1. Генерируем пару ключей WireGuard через `wg genkey | wg pubkey` в контейнере
-2. Находим свободный IP в подсети `10.8.1.0/24` (сканируем `awg0.conf`)
-3. Добавляем `[Peer]` блок в `awg0.conf`
-4. Добавляем запись в `clientsTable`
-5. Перезагружаем интерфейс через `awg-quick down/up`
-6. Собираем vpn:// URL для импорта в AmneziaVPN
+2. Находим свободный IP в подсети `10.8.1.0/24` (парсим `AllowedIPs` из `awg0.conf`)
+3. Читаем параметры сервера из `awg0.conf` (Jc, Jmin, Jmax, S1-S4, H1-H4, ListenPort)
+4. Читаем `wireguard_psk.key` и `wireguard_server_public_key.key`
+5. Добавляем `[Peer]` блок в `awg0.conf`
+6. Добавляем запись в `clientsTable` (JSON append)
+7. Перезагружаем интерфейс: `awg-quick down /opt/amnezia/awg/awg0.conf && awg-quick up /opt/amnezia/awg/awg0.conf`
+8. Собираем vpn:// URL для импорта в AmneziaVPN
 
 **Формат vpn:// ключа:**
 ```
 vpn://base64url(4-byte magic + zlib compressed JSON)
 ```
-JSON содержит полную конфигурацию сервера и клиента, включая параметры обфускации AmneziaWG (Jc, Jmin, Jmax, S1-S4, H1-H4).
 
-**Отзыв ключа:**
-1. Удаляем `[Peer]` блок из `awg0.conf` по PublicKey
-2. Удаляем запись из `clientsTable` по clientId
-3. Перезагружаем интерфейс
+Magic bytes: `\x00\x00\x0b\x50`
+
+JSON структура:
+```json
+{
+  "containers": [
+    {
+      "awg": {
+        "H1": "...", "H2": "...", "H3": "...", "H4": "...",
+        "Jc": "5", "Jmin": "10", "Jmax": "50",
+        "S1": "120", "S2": "44", "S3": "16", "S4": "12",
+        "last_config": "<полный конфиг клиента в JSON>",
+        "port": "45019",
+        "protocol_version": "2",
+        "subnet_address": "10.8.1.0",
+        "transport_proto": "udp"
+      },
+      "container": "amnezia-awg2"
+    }
+  ],
+  "defaultContainer": "amnezia-awg2",
+  "description": "OnyxVpn",
+  "dns1": "1.1.1.1",
+  "dns2": "1.0.0.1",
+  "hostName": "104.171.128.135"
+}
+```
+
+`last_config` содержит:
+```json
+{
+  "client_ip": "10.8.1.4",
+  "client_priv_key": "<client_private_key>",
+  "client_pub_key": "<client_public_key>",
+  "server_pub_key": "<server_public_key>",
+  "psk_key": "<psk_key>",
+  "config": "[Interface]\nAddress = 10.8.1.4/32\n...",
+  "hostName": "104.171.128.135",
+  "port": 45019,
+  "persistent_keep_alive": "25",
+  "mtu": "1376",
+  "allowed_ips": ["0.0.0.0/0", "::/0"]
+}
+```
+
+**Отзыв ключа (services/amnezia.py):**
+1. Находим `[Peer]` блок по PublicKey (хранится в `Subscription.uuid`)
+2. Удаляем блок из `awg0.conf` (regex `\[Peer\].*?PublicKey = <key>.*?(?=\[Peer\]|$)`)
+3. Удаляем запись из `clientsTable` по `clientId`
+4. Перезагружаем интерфейс: `awg-quick down/up`
+
+**Команды для диагностики:**
+```bash
+# Посмотреть конфиг сервера
+docker exec amnezia-awg2 cat /opt/amnezia/awg/awg0.conf
+
+# Посмотреть список клиентов
+docker exec amnezia-awg2 cat /opt/amnezia/awg/clientsTable
+
+# Посмотреть ключи сервера
+docker exec amnezia-awg2 cat /opt/amnezia/awg/wireguard_server_private_key.key
+docker exec amnezia-awg2 cat /opt/amnezia/awg/wireguard_server_public_key.key
+docker exec amnezia-awg2 cat /opt/amnezia/awg/wireguard_psk.key
+
+# Перезагрузить интерфейс вручную
+docker exec amnezia-awg2 sh -c "awg-quick down /opt/amnezia/awg/awg0.conf && awg-quick up /opt/amnezia/awg/awg0.conf"
+
+# Сгенерировать ключи вручную
+docker exec amnezia-awg2 sh -c "wg genkey"
+docker exec amnezia-awg2 sh -c "echo <private_key> | wg pubkey"
+```
 
 **Переменные окружения:**
 ```bash

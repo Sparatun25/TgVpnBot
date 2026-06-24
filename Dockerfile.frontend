@@ -8,7 +8,7 @@ WORKDIR /app
 COPY webapp/package*.json ./
 
 # Установка зависимостей
-RUN npm ci --prefer-offline
+RUN npm install
 
 # Копирование исходников
 COPY webapp/ .

@@ -87,10 +87,6 @@ async def admin_ui(request: Request):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OnyxVpn Admin</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script crossorigin="anonymous" src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin="anonymous" src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script crossorigin="anonymous" src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
         :root {
             --onyx-black: #0D0D0D;
@@ -424,259 +420,202 @@ async def admin_ui(request: Request):
     </style>
 </head>
 <body>
-    <div id="root"></div>
-    <script type="text/babel">
-        const { useState, useEffect } = React;
+    <div id="app"></div>
+    <script>
+        // Состояние приложения
+        let state = {
+            metrics: null,
+            subscriptions: [],
+            loading: true,
+            error: null,
+            page: 1,
+            total: 0,
+            searchTgId: '',
+            statusFilter: '',
+            modal: null,
+        };
 
-        function LoginScreen() {
-            const [error, setError] = useState('');
-
-            const handleLogin = async (data) => {
-                try {
-                    const res = await fetch('/api/admin/login', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(data),
-                    });
-
-                    if (!res.ok) {
-                        const err = await res.json();
-                        throw new Error(err.detail || 'Ошибка авторизации');
-                    }
-
-                    const result = await res.json();
-                    sessionStorage.setItem('admin_tg_id', result.tg_id);
-                    window.location.reload();
-                } catch (err) {
-                    setError(err.message);
-                }
-            };
-
-            useEffect(() => {
-                const script = document.createElement('script');
-                script.src = 'https://telegram.org/js/telegram-widget.js?22';
-                script.setAttribute('data-telegram-login', 'onyxvpnbot');
-                script.setAttribute('data-size', 'large');
-                script.setAttribute('data-onauth', 'onTelegramAuth(user)');
-                script.setAttribute('data-request-access', 'write');
-                document.getElementById('telegram-login').appendChild(script);
-
-                window.onTelegramAuth = handleLogin;
-
-                return () => {
-                    delete window.onTelegramAuth;
-                };
-            }, []);
-
-            return (
-                <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minHeight: '100vh',
-                    padding: '24px',
-                }}>
-                    <div style={{
-                        background: 'var(--onyx-dark)',
-                        border: '1px solid var(--onyx-gray)',
-                        borderRadius: '24px',
-                        padding: '48px',
-                        maxWidth: '480px',
-                        width: '100%',
-                        textAlign: 'center',
-                    }}>
-                        <h1 style={{
-                            fontSize: '32px',
-                            fontWeight: 700,
-                            background: 'linear-gradient(135deg, var(--onyx-accent), var(--onyx-accent-hover))',
-                            WebkitBackgroundClip: 'text',
-                            WebkitTextFillColor: 'transparent',
-                            marginBottom: '8px',
-                        }}>OnyxVpn Admin</h1>
-                        <p style={{ color: 'var(--onyx-text-muted)', fontSize: '14px', marginBottom: '32px' }}>
-                            Авторизуйтесь через Telegram
-                        </p>
-                        <div id="telegram-login" style={{ marginBottom: '24px' }}></div>
-                        {error && (
-                            <div style={{
-                                background: 'rgba(239, 68, 68, 0.1)',
-                                border: '1px solid var(--onyx-error)',
-                                borderRadius: '12px',
-                                padding: '16px',
-                                color: 'var(--onyx-error)',
-                                marginTop: '16px',
-                            }}>
-                                {error}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            );
-        }
-
-        function AdminPanel() {
-            const [metrics, setMetrics] = useState(null);
-            const [subscriptions, setSubscriptions] = useState([]);
-            const [loading, setLoading] = useState(true);
-            const [error, setError] = useState(null);
-            const [page, setPage] = useState(1);
-            const [total, setTotal] = useState(0);
-            const [searchTgId, setSearchTgId] = useState('');
-            const [statusFilter, setStatusFilter] = useState('');
-            const [modal, setModal] = useState(null);
-
+        // Получить заголовки для API
+        function getHeaders() {
+            const headers = { 'Content-Type': 'application/json' };
             const adminTgId = sessionStorage.getItem('admin_tg_id');
-            const initData = window.Telegram?.WebApp?.initData || '';
-
-            const headers = {
-                'Content-Type': 'application/json',
-            };
-
             if (adminTgId) {
                 headers['X-Admin-Tg-Id'] = adminTgId;
-            } else if (initData) {
-                headers['Authorization'] = `Bearer ${initData}`;
             }
+            return headers;
+        }
 
-            useEffect(() => {
-                loadMetrics();
-                loadSubscriptions();
-            }, [page, searchTgId, statusFilter]);
+        // Загрузка метрик
+        async function loadMetrics() {
+            try {
+                const res = await fetch('/api/admin/metrics', { headers: getHeaders() });
+                if (!res.ok) throw new Error('Не удалось загрузить метрики');
+                state.metrics = await res.json();
+            } catch (err) {
+                state.error = err.message;
+            }
+            render();
+        }
 
-            const loadMetrics = async () => {
-                try {
-                    const res = await fetch('/api/admin/metrics', { headers });
-                    if (!res.ok) throw new Error('Не удалось загрузить метрики');
-                    const data = await res.json();
-                    setMetrics(data);
-                } catch (err) {
-                    setError(err.message);
-                }
-            };
+        // Загрузка подписок
+        async function loadSubscriptions() {
+            state.loading = true;
+            render();
 
-            const loadSubscriptions = async () => {
-                setLoading(true);
-                try {
-                    const params = new URLSearchParams({
-                        page: page.toString(),
-                        per_page: '20',
-                    });
-                    if (searchTgId) params.append('search_tg_id', searchTgId);
-                    if (statusFilter) params.append('status_filter', statusFilter);
+            try {
+                const params = new URLSearchParams({
+                    page: state.page.toString(),
+                    per_page: '20',
+                });
+                if (state.searchTgId) params.append('search_tg_id', state.searchTgId);
+                if (state.statusFilter) params.append('status_filter', state.statusFilter);
 
-                    const res = await fetch(`/api/admin/subscriptions?${params}`, { headers });
-                    if (!res.ok) throw new Error('Не удалось загрузить подписки');
-                    const data = await res.json();
-                    setSubscriptions(data.items);
-                    setTotal(data.total);
-                } catch (err) {
-                    setError(err.message);
-                } finally {
-                    setLoading(false);
-                }
-            };
+                const res = await fetch(`/api/admin/subscriptions?${params}`, { headers: getHeaders() });
+                if (!res.ok) throw new Error('Не удалось загрузить подписки');
+                const data = await res.json();
+                state.subscriptions = data.items;
+                state.total = data.total;
+            } catch (err) {
+                state.error = err.message;
+            } finally {
+                state.loading = false;
+            }
+            render();
+        }
 
-            const handleExtend = async (subscriptionId, days) => {
-                try {
-                    const res = await fetch(`/api/admin/subscriptions/${subscriptionId}/extend`, {
-                        method: 'POST',
-                        headers,
-                        body: JSON.stringify({ days }),
-                    });
-                    if (!res.ok) throw new Error('Не удалось продлить подписку');
-                    setModal(null);
-                    loadSubscriptions();
-                    loadMetrics();
-                } catch (err) {
-                    alert(err.message);
-                }
-            };
+        // Продление подписки
+        async function handleExtend(subscriptionId, days) {
+            try {
+                const res = await fetch(`/api/admin/subscriptions/${subscriptionId}/extend`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ days }),
+                });
+                if (!res.ok) throw new Error('Не удалось продлить подписку');
+                state.modal = null;
+                await loadSubscriptions();
+                await loadMetrics();
+            } catch (err) {
+                alert(err.message);
+            }
+        }
 
-            const handleRevoke = async (subscriptionId) => {
-                if (!confirm('Вы уверены? Ключ будет отозван безвозвратно.')) return;
-                try {
-                    const res = await fetch(`/api/admin/subscriptions/${subscriptionId}/revoke`, {
-                        method: 'DELETE',
-                        headers,
-                    });
-                    if (!res.ok) throw new Error('Не удалось отозвать ключ');
-                    loadSubscriptions();
-                    loadMetrics();
-                } catch (err) {
-                    alert(err.message);
-                }
-            };
+        // Отзыв ключа
+        async function handleRevoke(subscriptionId) {
+            if (!confirm('Вы уверены? Ключ будет отозван безвозвратно.')) return;
+            try {
+                const res = await fetch(`/api/admin/subscriptions/${subscriptionId}/revoke`, {
+                    method: 'DELETE',
+                    headers: getHeaders(),
+                });
+                if (!res.ok) throw new Error('Не удалось отозвать ключ');
+                await loadSubscriptions();
+                await loadMetrics();
+            } catch (err) {
+                alert(err.message);
+            }
+        }
 
-            if (error) {
-                return (
-                    <div className="admin-container">
-                        <div className="error">{error}</div>
-                        <button className="btn btn-primary" onClick={() => window.location.reload()}>
-                            Обновить страницу
-                        </button>
+        // Выход
+        function handleLogout() {
+            sessionStorage.removeItem('admin_tg_id');
+            window.location.reload();
+        }
+
+        // Рендер экрана входа
+        function renderLogin() {
+            return `
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px;">
+                    <div style="background:var(--onyx-dark);border:1px solid var(--onyx-gray);border-radius:24px;padding:48px;max-width:480px;width:100%;text-align:center;">
+                        <h1 style="font-size:32px;font-weight:700;background:linear-gradient(135deg,var(--onyx-accent),var(--onyx-accent-hover));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px;">OnyxVpn Admin</h1>
+                        <p style="color:var(--onyx-text-muted);font-size:14px;margin-bottom:32px;">Авторизуйтесь через Telegram</p>
+                        <div id="telegram-login-widget" style="margin-bottom:24px;"></div>
+                        <div id="login-error" style="display:none;background:rgba(239,68,68,0.1);border:1px solid var(--onyx-error);border-radius:12px;padding:16px;color:var(--onyx-error);margin-top:16px;"></div>
                     </div>
-                );
-            }
+                </div>
+            `;
+        }
 
-            return (
-                <div className="admin-container">
-                    <div className="admin-header">
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        // Рендер админ-панели
+        function renderAdmin() {
+            const metricsHtml = state.metrics ? `
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-label">Всего пользователей</div>
+                        <div class="metric-value">${state.metrics.total_users}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Активных подписок</div>
+                        <div class="metric-value">${state.metrics.active_subscriptions}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Активных триалов</div>
+                        <div class="metric-value">${state.metrics.active_trials}</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Всего пополнений</div>
+                        <div class="metric-value">${(state.metrics.total_deposits_kopecks / 100).toFixed(0)} ₽</div>
+                    </div>
+                </div>
+            ` : '';
+
+            const subscriptionsHtml = state.loading ? '<div class="loading">Загрузка...</div>' : `
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Telegram ID</th>
+                            <th>Username</th>
+                            <th>Тип</th>
+                            <th>Статус</th>
+                            <th>Истекает</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${state.subscriptions.map(sub => `
+                            <tr>
+                                <td>${sub.id}</td>
+                                <td>${sub.user_tg_id}</td>
+                                <td>${sub.username || '—'}</td>
+                                <td><span class="badge badge-${sub.plan_type === 'trial' ? 'trial' : 'active'}">${sub.plan_type}</span></td>
+                                <td><span class="badge badge-${sub.is_active ? 'active' : 'expired'}">${sub.is_active ? 'Активна' : 'Истекла'}</span></td>
+                                <td>${new Date(sub.expires_at).toLocaleDateString('ru-RU')}</td>
+                                <td>
+                                    <div class="action-buttons">
+                                        <button class="btn btn-primary" onclick="showExtendModal(${sub.id})">Продлить</button>
+                                        ${sub.is_active ? `<button class="btn btn-danger" onclick="handleRevoke(${sub.id})">Отозвать</button>` : ''}
+                                    </div>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                <div class="pagination">
+                    <button ${state.page === 1 ? 'disabled' : ''} onclick="changePage(-1)">← Назад</button>
+                    <span style="padding:8px 14px;">Стр. ${state.page} из ${Math.ceil(state.total / 20)}</span>
+                    <button ${state.page >= Math.ceil(state.total / 20) ? 'disabled' : ''} onclick="changePage(1)">Вперёд →</button>
+                </div>
+            `;
+
+            return `
+                <div class="admin-container">
+                    <div class="admin-header">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                             <div>
-                                <h1 className="admin-title">OnyxVpn Admin</h1>
-                                <p className="admin-subtitle">Панель управления подписками</p>
+                                <h1 class="admin-title">OnyxVpn Admin</h1>
+                                <p class="admin-subtitle">Панель управления подписками</p>
                             </div>
-                            <button
-                                className="btn btn-danger"
-                                style={{ fontSize: '12px', padding: '6px 12px' }}
-                                onClick={() => {
-                                    sessionStorage.removeItem('admin_tg_id');
-                                    window.location.reload();
-                                }}
-                            >
-                                Выйти
-                            </button>
+                            <button class="btn btn-danger" style="font-size:12px;padding:6px 12px;" onclick="handleLogout()">Выйти</button>
                         </div>
                     </div>
-
-                    {metrics && (
-                        <div className="metrics-grid">
-                            <div className="metric-card">
-                                <div className="metric-label">Всего пользователей</div>
-                                <div className="metric-value">{metrics.total_users}</div>
-                            </div>
-                            <div className="metric-card">
-                                <div className="metric-label">Активных подписок</div>
-                                <div className="metric-value">{metrics.active_subscriptions}</div>
-                            </div>
-                            <div className="metric-card">
-                                <div className="metric-label">Активных триалов</div>
-                                <div className="metric-value">{metrics.active_trials}</div>
-                            </div>
-                            <div className="metric-card">
-                                <div className="metric-label">Всего пополнений</div>
-                                <div className="metric-value">{(metrics.total_deposits_kopecks / 100).toFixed(0)} ₽</div>
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="section">
-                        <div className="section-header">
-                            <h2 className="section-title">Подписки</h2>
-                            <div className="filters">
-                                <input
-                                    type="text"
-                                    className="filter-input"
-                                    placeholder="Поиск по tg_id"
-                                    value={searchTgId}
-                                    onChange={(e) => setSearchTgId(e.target.value)}
-                                />
-                                <select
-                                    className="filter-select"
-                                    value={statusFilter}
-                                    onChange={(e) => setStatusFilter(e.target.value)}
-                                >
+                    ${metricsHtml}
+                    <div class="section">
+                        <div class="section-header">
+                            <h2 class="section-title">Подписки</h2>
+                            <div class="filters">
+                                <input type="text" class="filter-input" placeholder="Поиск по tg_id" value="${state.searchTgId}" oninput="updateSearch(this.value)">
+                                <select class="filter-select" value="${state.statusFilter}" onchange="updateFilter(this.value)">
                                     <option value="">Все</option>
                                     <option value="active">Активные</option>
                                     <option value="expired">Истёкшие</option>
@@ -684,139 +623,138 @@ async def admin_ui(request: Request):
                                 </select>
                             </div>
                         </div>
-
-                        {loading ? (
-                            <div className="loading">Загрузка...</div>
-                        ) : (
-                            <>
-                                <table className="table">
-                                    <thead>
-                                        <tr>
-                                            <th>ID</th>
-                                            <th>Telegram ID</th>
-                                            <th>Username</th>
-                                            <th>Тип</th>
-                                            <th>Статус</th>
-                                            <th>Истекает</th>
-                                            <th>Действия</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {subscriptions.map((sub) => (
-                                            <tr key={sub.id}>
-                                                <td>{sub.id}</td>
-                                                <td>{sub.user_tg_id}</td>
-                                                <td>{sub.username || '—'}</td>
-                                                <td>
-                                                    <span className={`badge badge-${sub.plan_type === 'trial' ? 'trial' : 'active'}`}>
-                                                        {sub.plan_type}
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <span className={`badge badge-${sub.is_active ? 'active' : 'expired'}`}>
-                                                        {sub.is_active ? 'Активна' : 'Истекла'}
-                                                    </span>
-                                                </td>
-                                                <td>{new Date(sub.expires_at).toLocaleDateString('ru-RU')}</td>
-                                                <td>
-                                                    <div className="action-buttons">
-                                                        <button
-                                                            className="btn btn-primary"
-                                                            onClick={() => setModal({ type: 'extend', subscriptionId: sub.id })}
-                                                        >
-                                                            Продлить
-                                                        </button>
-                                                        {sub.is_active && (
-                                                            <button
-                                                                className="btn btn-danger"
-                                                                onClick={() => handleRevoke(sub.id)}
-                                                            >
-                                                                Отозвать
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-
-                                <div className="pagination">
-                                    <button
-                                        disabled={page === 1}
-                                        onClick={() => setPage(p => p - 1)}
-                                    >
-                                        ← Назад
-                                    </button>
-                                    <span style={{ padding: '8px 14px' }}>
-                                        Стр. {page} из {Math.ceil(total / 20)}
-                                    </span>
-                                    <button
-                                        disabled={page >= Math.ceil(total / 20)}
-                                        onClick={() => setPage(p => p + 1)}
-                                    >
-                                        Вперёд →
-                                    </button>
-                                </div>
-                            </>
-                        )}
+                        ${subscriptionsHtml}
                     </div>
-
-                    {modal && modal.type === 'extend' && (
-                        <ExtendModal
-                            subscriptionId={modal.subscriptionId}
-                            onClose={() => setModal(null)}
-                            onExtend={handleExtend}
-                        />
-                    )}
                 </div>
-            );
+            `;
         }
 
-        function ExtendModal({ subscriptionId, onClose, onExtend }) {
-            const [days, setDays] = useState(30);
-
-            return (
-                <div className="modal-overlay" onClick={onClose}>
-                    <div className="modal" onClick={(e) => e.stopPropagation()}>
-                        <h3 className="modal-title">Продлить подписку</h3>
-                        <div className="modal-body">
-                            <div className="form-group">
-                                <label className="form-label">Количество дней</label>
-                                <input
-                                    type="number"
-                                    className="form-input"
-                                    value={days}
-                                    onChange={(e) => setDays(parseInt(e.target.value))}
-                                    min="1"
-                                    max="365"
-                                />
+        // Рендер модального окна
+        function renderModal() {
+            if (!state.modal || state.modal.type !== 'extend') return '';
+            return `
+                <div class="modal-overlay" onclick="closeModal()">
+                    <div class="modal" onclick="event.stopPropagation()">
+                        <h3 class="modal-title">Продлить подписку</h3>
+                        <div class="modal-body">
+                            <div class="form-group">
+                                <label class="form-label">Количество дней</label>
+                                <input type="number" id="extend-days" class="form-input" value="30" min="1" max="365">
                             </div>
                         </div>
-                        <div className="modal-footer">
-                            <button className="btn" onClick={onClose}>Отмена</button>
-                            <button className="btn btn-primary" onClick={() => onExtend(subscriptionId, days)}>
-                                Продлить
-                            </button>
+                        <div class="modal-footer">
+                            <button class="btn" onclick="closeModal()">Отмена</button>
+                            <button class="btn btn-primary" onclick="submitExtend()">Продлить</button>
                         </div>
                     </div>
                 </div>
-            );
+            `;
         }
 
-        function App() {
+        // Основной рендер
+        function render() {
+            const app = document.getElementById('app');
             const adminTgId = sessionStorage.getItem('admin_tg_id');
-            const initData = window.Telegram?.WebApp?.initData;
 
-            // Если нет ни tg_id от Login Widget, ни initData от Mini App — показываем экран входа
-            if (!adminTgId && !initData) {
-                return <LoginScreen />;
+            if (state.error) {
+                app.innerHTML = `<div class="admin-container"><div class="error">${state.error}</div><button class="btn btn-primary" onclick="window.location.reload()">Обновить страницу</button></div>`;
+                return;
             }
 
-            return <AdminPanel />;
+            if (!adminTgId) {
+                app.innerHTML = renderLogin();
+                initTelegramWidget();
+            } else {
+                app.innerHTML = renderAdmin() + renderModal();
+            }
         }
 
-        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+        // Инициализация Telegram Login Widget
+        function initTelegramWidget() {
+            const container = document.getElementById('telegram-login-widget');
+            if (!container) return;
+
+            const script = document.createElement('script');
+            script.src = 'https://telegram.org/js/telegram-widget.js?22';
+            script.setAttribute('data-telegram-login', 'onyxvpnbot');
+            script.setAttribute('data-size', 'large');
+            script.setAttribute('data-onauth', 'onTelegramAuth(user)');
+            script.setAttribute('data-request-access', 'write');
+            container.appendChild(script);
+        }
+
+        // Обработчик авторизации от Telegram
+        window.onTelegramAuth = async function(data) {
+            try {
+                const res = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data),
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || 'Ошибка авторизации');
+                }
+
+                const result = await res.json();
+                sessionStorage.setItem('admin_tg_id', result.tg_id);
+                window.location.reload();
+            } catch (err) {
+                const errorDiv = document.getElementById('login-error');
+                if (errorDiv) {
+                    errorDiv.textContent = err.message;
+                    errorDiv.style.display = 'block';
+                }
+            }
+        };
+
+        // Вспомогательные функции
+        function showExtendModal(subscriptionId) {
+            state.modal = { type: 'extend', subscriptionId };
+            render();
+        }
+
+        function closeModal() {
+            state.modal = null;
+            render();
+        }
+
+        function submitExtend() {
+            const daysInput = document.getElementById('extend-days');
+            const days = parseInt(daysInput.value);
+            if (state.modal && state.modal.type === 'extend') {
+                handleExtend(state.modal.subscriptionId, days);
+            }
+        }
+
+        function changePage(delta) {
+            state.page += delta;
+            loadSubscriptions();
+        }
+
+        function updateSearch(value) {
+            state.searchTgId = value;
+            state.page = 1;
+            loadSubscriptions();
+        }
+
+        function updateFilter(value) {
+            state.statusFilter = value;
+            state.page = 1;
+            loadSubscriptions();
+        }
+
+        // Инициализация
+        document.addEventListener('DOMContentLoaded', () => {
+            const adminTgId = sessionStorage.getItem('admin_tg_id');
+            if (adminTgId) {
+                loadMetrics();
+                loadSubscriptions();
+            } else {
+                render();
+            }
+        });
     </script>
 </body>
 </html>

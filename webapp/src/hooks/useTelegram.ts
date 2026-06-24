@@ -48,23 +48,34 @@ declare global {
 export function useTelegram() {
   const [tg, setTg] = useState<TelegramWebApp | null>(null)
   const [user, setUser] = useState<TelegramUser | null>(null)
+  const [sdkReady, setSdkReady] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
 
   useEffect(() => {
-    const webApp = window.Telegram?.WebApp
+    const checkSdk = () => {
+      const webApp = window.Telegram?.WebApp
 
-    if (webApp) {
-      webApp.ready()
-      webApp.expand()
-      setTg(webApp)
-      setUser(webApp.initDataUnsafe.user || null)
+      if (webApp) {
+        webApp.ready()
+        webApp.expand()
+        setTg(webApp)
+        setUser(webApp.initDataUnsafe.user || null)
+        setSdkReady(true)
+      } else if (retryCount < 3) {
+        // SDK не загрузился — пробуем ещё раз (до 3 раз)
+        const timer = setTimeout(() => {
+          setRetryCount(prev => prev + 1)
+        }, 500)
+        return () => clearTimeout(timer)
+      } else {
+        setSdkReady(true)
+      }
     }
-  }, [])
 
-  // Читаем initData напрямую из window, а не из React-стейта.
-  // Скрипт telegram-web-app.js загружается синхронно в <head>,
-  // поэтому window.Telegram.WebApp доступен сразу при монтировании,
-  // а стейт обновляется только после useEffect (после первого рендера).
+    checkSdk()
+  }, [retryCount])
+
   const getInitData = () => window.Telegram?.WebApp?.initData || ''
 
-  return { tg, user, getInitData }
+  return { tg, user, getInitData, sdkReady }
 }

@@ -9,11 +9,13 @@ import { ProfileScreen } from './components/ProfileScreen'
 type Tab = 'vpn' | 'tariffs' | 'balance' | 'profile'
 
 export default function App() {
-  const { user, getInitData } = useTelegram()
+  const { user, getInitData, sdkReady } = useTelegram()
   const { loading, error, getProfile, activateTrial } = useApi(getInitData)
   const [activeTab, setActiveTab] = useState<Tab>('vpn')
   const [profile, setProfile] = useState<ProfileData | null>(null)
   const [hasUsedTrial, setHasUsedTrial] = useState(false)
+
+  // Не блокируем рендер если SDK не загрузился — пусть useApi покажет ошибку
 
   useEffect(() => {
     loadProfile()
@@ -78,7 +80,18 @@ export default function App() {
           </svg>
         </div>
         <div className="error-text">{error}</div>
-        <button className="error-button" onClick={loadProfile}>
+        <button
+          className="error-button"
+          onClick={() => {
+            // Если ошибка "Откройте через Telegram" — перезагружаем страницу
+            // Иначе пробуем загрузить профиль снова
+            if (error.includes('Telegram')) {
+              window.location.reload()
+            } else {
+              loadProfile()
+            }
+          }}
+        >
           Повторить
         </button>
       </div>

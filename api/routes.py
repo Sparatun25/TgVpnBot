@@ -171,7 +171,7 @@ async def activate_trial(
 
     # Генерируем ключ Amnezia
     try:
-        connection_url = await create_client_key(user.id, is_trial=True)
+        connection_url, client_pub_key = await create_client_key(user.id, is_trial=True)
     except RuntimeError as e:
         logger.error("Ошибка создания ключа Amnezia: %s", e)
         raise HTTPException(
@@ -183,7 +183,7 @@ async def activate_trial(
     expires_at = now + timedelta(days=3)
     subscription = Subscription(
         user_id=user.id,
-        uuid=connection_url.split("@")[0].split("//")[-1] if "@" in connection_url else "unknown",
+        uuid=client_pub_key,  # Сохраняем public key для отзыва ключа
         plan_type="trial",
         expires_at=expires_at,
         is_active=True,

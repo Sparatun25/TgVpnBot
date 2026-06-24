@@ -35,11 +35,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS для React Mini App
+# CORS для React Mini App и админки
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://your-mini-app-domain.com",  # TODO: заменить на реальный домен
+        "https://onyxvpnbot.ru",  # Mini App и админка
         "http://localhost:3000",  # для разработки
     ],
     allow_credentials=True,

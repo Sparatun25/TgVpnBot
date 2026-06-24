@@ -78,8 +78,42 @@ Telegram Mini App (webapp/)
   - `Subscription` — user_id, uuid, plan_type, expires_at, is_active, **connection_url**
   - `Payment` — user_id, amount, payment_id, status
 - **services/** — бизнес-логика:
-  - `amnezia.py` — создание/отзыв ключей через Docker exec в контейнер amnezia-vpn
+  - `amnezia.py` — создание/отзыв ключей через Docker exec в контейнер amnezia-awg2
   - `payment_sbp.py` — интеграция с ЮKassa СБП
+
+### AmneziaWG интеграция
+
+**Архитектура:**
+- Контейнер `amnezia-awg2` (образ `amnezia-awg2`) работает на том же сервере
+- Порт: `45019/udp`
+- Конфиг: `/opt/amnezia/awg/awg0.conf`
+- Клиенты: `/opt/amnezia/awg/clientsTable` (JSON файл)
+- Ключи сервера: `/opt/amnezia/awg/wireguard_server_private_key.key`, `wireguard_server_public_key.key`, `wireguard_psk.key`
+
+**Процесс создания ключа:**
+1. Генерируем пару ключей WireGuard через `wg genkey | wg pubkey` в контейнере
+2. Находим свободный IP в подсети `10.8.1.0/24` (сканируем `awg0.conf`)
+3. Добавляем `[Peer]` блок в `awg0.conf`
+4. Добавляем запись в `clientsTable`
+5. Перезагружаем интерфейс через `awg-quick down/up`
+6. Собираем vpn:// URL для импорта в AmneziaVPN
+
+**Формат vpn:// ключа:**
+```
+vpn://base64url(4-byte magic + zlib compressed JSON)
+```
+JSON содержит полную конфигурацию сервера и клиента, включая параметры обфускации AmneziaWG (Jc, Jmin, Jmax, S1-S4, H1-H4).
+
+**Отзыв ключа:**
+1. Удаляем `[Peer]` блок из `awg0.conf` по PublicKey
+2. Удаляем запись из `clientsTable` по clientId
+3. Перезагружаем интерфейс
+
+**Переменные окружения:**
+```bash
+AMNEZIA_SERVER_HOST=104.171.128.135  # Публичный IP сервера
+AMNEZIA_CONTAINER_NAME=amnezia-awg2  # Имя контейнера
+```
 
 ### Авторизация
 
@@ -120,8 +154,8 @@ BOT_TOKEN=...                    # Токен Telegram бота @Onyx_vpn24_bot 
 BOT_ADMIN_IDS=123,456            # Список ID администраторов через запятую
 DATABASE_URL=postgresql+asyncpg://...
 WEBAPP_URL=https://onyxvpnbot.ru # URL Mini App (для кнопки в боте)
-AMNEZIA_API_URL=http://localhost:8080
-AMNEZIA_API_KEY=...
+AMNEZIA_SERVER_HOST=104.171.128.135  # Публичный IP сервера AmneziaWG
+AMNEZIA_CONTAINER_NAME=amnezia-awg2  # Имя контейнера AmneziaWG
 YUKASSA_SHOP_ID=...
 YUKASSA_SECRET_KEY=...
 ```
@@ -235,6 +269,7 @@ docker exec -it onyxvpn-postgres psql -U postgres -d onyxvpn -c "DROP TABLE ..."
 - Миграции БД через Alembic.
 - Коммиты: conventional commits (`feat:`, `fix:`, `refactor:`).
 - Перед коммитом: линтер (ruff), форматтер (ruff format).
+- **НИКАКИХ ЗАГЛУШЕК.** Весь код должен быть реальным. Если не можешь написать — спрашивай у пользователя. Никаких `from amnezia_api import add_client` если такого модуля нет. Никаких `# TODO: заменить на реальный код`.
 
 ---
 

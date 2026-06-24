@@ -29,14 +29,12 @@ export function VpnScreen({
 
   const handleConnect = async () => {
     if (!connectionUrl) {
-      // Ключ не сгенерирован — подсвечиваем первый пункт
+      // Шаг 1 не выполнен (Amnezia не скачана) — трясём первый пункт
       const step1 = document.querySelector('.stepper-step')
       if (step1) {
         step1.classList.add('stepper-step-shake')
         setTimeout(() => step1.classList.remove('stepper-step-shake'), 2000)
       }
-      setToastMessage('Сначала скачайте Amnezia VPN (шаг 1)')
-      setShowToast(true)
       return
     }
 

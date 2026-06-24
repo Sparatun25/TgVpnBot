@@ -1060,6 +1060,28 @@ body {
   }
 }
 
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  10%, 30%, 50%, 70%, 90% {
+    transform: translateX(-8px);
+  }
+  20%, 40%, 60%, 80% {
+    transform: translateX(8px);
+  }
+}
+
+.stepper-step-shake {
+  animation: shake 0.6s ease-in-out;
+}
+
+.stepper-step-shake .stepper-number {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: var(--onyx-error);
+  color: var(--onyx-error);
+}
+
 /* Responsive */
 @media (max-width: 380px) {
   .app-content {

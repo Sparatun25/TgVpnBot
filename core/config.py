@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     amnezia_api_url: str = "http://localhost:8080"
     amnezia_api_key: SecretStr | None = None
     amnezia_docker_host: str = "localhost"
+    amnezia_server_host: str = "104.171.128.135"  # Публичный IP сервера
+    amnezia_container_name: str = "amnezia-awg2"  # Имя контейнера AmneziaWG
 
     # Payment (ЮKassa СБП)
     yukassa_shop_id: str | None = None

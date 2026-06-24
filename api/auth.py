@@ -120,10 +120,10 @@ async def get_current_user_tg_id(
 
     init_data = credentials.credentials
 
-    bot_token = settings.telegram_bot_token
+    bot_token = settings.bot_token
 
     if not bot_token:
-        logger.error("TELEGRAM_BOT_TOKEN не настроен")
+        logger.error("BOT_TOKEN не настроен")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Серверная ошибка конфигурации",

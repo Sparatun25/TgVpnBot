@@ -20,8 +20,7 @@ class Settings(BaseSettings):
     # Database
     database_url: str
 
-    # Telegram WebApp (для валидации initData)
-    telegram_bot_token: SecretStr | None = None
+    # Telegram WebApp URL
     webapp_url: str = "https://onyxvpn.app"
 
     # Amnezia VPN API

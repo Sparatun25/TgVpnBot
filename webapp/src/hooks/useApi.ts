@@ -85,7 +85,23 @@ export function useApi(getInitData: () => string) {
       }
 
       if (!response.ok) {
-        throw new Error('Не удалось загрузить профиль')
+        // Пытаемся получить детальное сообщение от бэкенда
+        let detail = ''
+        try {
+          const data = await response.json()
+          detail = data.detail || ''
+        } catch { /* ignore */ }
+
+        if (response.status === 500) {
+          throw new Error(detail || 'Внутренняя ошибка сервера')
+        }
+        if (response.status === 502) {
+          throw new Error(detail || 'Сервер недоступен. Попробуйте позже.')
+        }
+        if (response.status === 401) {
+          throw new Error(detail || 'Ошибка авторизации. Перезапустите приложение.')
+        }
+        throw new Error(detail || `Не удалось загрузить профиль (${response.status})`)
       }
 
       return await response.json()

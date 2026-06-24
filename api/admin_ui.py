@@ -31,11 +31,11 @@ async def admin_login(data: TelegramLoginData):
     # Преобразуем в словарь для валидации
     data_dict = data.model_dump()
 
-    bot_token = settings.telegram_bot_token
+    bot_token = settings.bot_token
     if not bot_token:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="TELEGRAM_BOT_TOKEN не настроен",
+            detail="BOT_TOKEN не настроен",
         )
 
     try:
@@ -63,13 +63,11 @@ async def admin_config():
 
     Возвращает bot_username для виджета.
     """
-    # Извлекаем username из токена (формат: "123456:ABC-DEF...")
-    # Или берём из webapp_url
-    bot_token = settings.telegram_bot_token
+    bot_token = settings.bot_token
     if not bot_token:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="TELEGRAM_BOT_TOKEN не настроен",
+            detail="BOT_TOKEN не настроен",
         )
 
     # Для виджета нужен username бота

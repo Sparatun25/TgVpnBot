@@ -107,10 +107,16 @@ frontend:       # nginx со статикой React, порт 3000, сеть ony
 amnezia-vpn:    # внешний контейнер (не в docker-compose), сеть amnezia-network
 ```
 
+### Telegram бот
+
+- **Username:** `@Onyx_vpn24_bot` (хардкодится в `api/admin_ui.py` для Login Widget)
+- **Домен Mini App:** `https://onyxvpnbot.ru`
+- **Login Widget:** настроен на домен `onyxvpnbot.ru` (должен быть добавлен через @BotFather → My Bots → @Onyx_vpn24_bot → Domain)
+
 ### Переменные окружения (.env)
 
 ```bash
-BOT_TOKEN=...                    # Токен Telegram бота (обязательный)
+BOT_TOKEN=...                    # Токен Telegram бота @Onyx_vpn24_bot (обязательный)
 BOT_ADMIN_IDS=123,456            # Список ID администраторов через запятую
 DATABASE_URL=postgresql+asyncpg://...
 WEBAPP_URL=https://onyxvpnbot.ru # URL Mini App (для кнопки в боте)

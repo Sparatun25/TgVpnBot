@@ -73,7 +73,7 @@ async def admin_config():
     # Для виджета нужен username бота
     # Временное решение: возвращаем заглушку, нужно будет настроить
     return {
-        "bot_username": "onyxvpnbot",  # TODO: вынести в конфиг
+        "bot_username": "Onyx_vpn24_bot",
     }
 
 
@@ -676,7 +676,7 @@ async def admin_ui(request: Request):
 
             const script = document.createElement('script');
             script.src = 'https://telegram.org/js/telegram-widget.js?22';
-            script.setAttribute('data-telegram-login', 'onyxvpnbot');
+            script.setAttribute('data-telegram-login', 'Onyx_vpn24_bot');
             script.setAttribute('data-size', 'large');
             script.setAttribute('data-onauth', 'onTelegramAuth(user)');
             script.setAttribute('data-request-access', 'write');

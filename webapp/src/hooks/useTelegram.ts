@@ -60,7 +60,11 @@ export function useTelegram() {
     }
   }, [])
 
-  const getInitData = () => tg?.initData || ''
+  // Читаем initData напрямую из window, а не из React-стейта.
+  // Скрипт telegram-web-app.js загружается синхронно в <head>,
+  // поэтому window.Telegram.WebApp доступен сразу при монтировании,
+  // а стейт обновляется только после useEffect (после первого рендера).
+  const getInitData = () => window.Telegram?.WebApp?.initData || ''
 
   return { tg, user, getInitData }
 }

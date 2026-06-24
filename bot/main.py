@@ -10,6 +10,7 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from core.config import settings
+from database.init_db import init_db, check_connection
 from bot.handlers import start
 from bot.services.scheduler import start_notification_scheduler
 
@@ -26,6 +27,12 @@ logger = logging.getLogger(__name__)
 async def main() -> None:
     """Главная функция запуска бота."""
     logger.info("Запуск OnyxVpn Telegram-бота...")
+
+    # Проверяем подключение к БД и создаём таблицы
+    if not await check_connection():
+        logger.error("Не удалось подключиться к базе данных")
+        return
+    await init_db()
 
     # Инициализация бота
     bot = Bot(

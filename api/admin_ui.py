@@ -500,6 +500,28 @@ async def admin_ui(request: Request):
             }
         }
 
+        // Начисление баланса
+        async function handleTopUp(tgId, amountRubles, comment) {
+            try {
+                const res = await fetch(`/api/admin/users/${tgId}/topup`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ amount_rubles: amountRubles, comment }),
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || 'Не удалось начислить баланс');
+                }
+                const data = await res.json();
+                state.modal = null;
+                await loadSubscriptions();
+                await loadMetrics();
+                alert(`Баланс начислен! Новый баланс: ${(data.new_balance / 100).toFixed(2)} ₽`);
+            } catch (err) {
+                alert(err.message);
+            }
+        }
+
         // Отзыв ключа
         async function handleRevoke(subscriptionId) {
             if (!confirm('Вы уверены? Ключ будет отозван безвозвратно.')) return;
@@ -566,6 +588,7 @@ async def admin_ui(request: Request):
                             <th>ID</th>
                             <th>Telegram ID</th>
                             <th>Username</th>
+                            <th>Баланс</th>
                             <th>Тип</th>
                             <th>Статус</th>
                             <th>Истекает</th>
@@ -578,11 +601,13 @@ async def admin_ui(request: Request):
                                 <td>${sub.id}</td>
                                 <td>${sub.user_tg_id}</td>
                                 <td>${sub.username || '—'}</td>
+                                <td>${(sub.balance / 100).toFixed(2)} ₽</td>
                                 <td><span class="badge badge-${sub.plan_type === 'trial' ? 'trial' : 'active'}">${sub.plan_type}</span></td>
                                 <td><span class="badge badge-${sub.is_active ? 'active' : 'expired'}">${sub.is_active ? 'Активна' : 'Истекла'}</span></td>
                                 <td>${new Date(sub.expires_at).toLocaleDateString('ru-RU')}</td>
                                 <td>
                                     <div class="action-buttons">
+                                        <button class="btn btn-primary" onclick="showTopUpModal(${sub.user_tg_id}, '${sub.username || ''}')">Начислить</button>
                                         <button class="btn btn-primary" onclick="showExtendModal(${sub.id})">Продлить</button>
                                         ${sub.is_active ? `<button class="btn btn-danger" onclick="handleRevoke(${sub.id})">Отозвать</button>` : ''}
                                     </div>
@@ -631,24 +656,59 @@ async def admin_ui(request: Request):
 
         // Рендер модального окна
         function renderModal() {
-            if (!state.modal || state.modal.type !== 'extend') return '';
-            return `
-                <div class="modal-overlay" onclick="closeModal()">
-                    <div class="modal" onclick="event.stopPropagation()">
-                        <h3 class="modal-title">Продлить подписку</h3>
-                        <div class="modal-body">
-                            <div class="form-group">
-                                <label class="form-label">Количество дней</label>
-                                <input type="number" id="extend-days" class="form-input" value="30" min="1" max="365">
+            if (!state.modal) return '';
+
+            if (state.modal.type === 'extend') {
+                return `
+                    <div class="modal-overlay" onclick="closeModal()">
+                        <div class="modal" onclick="event.stopPropagation()">
+                            <h3 class="modal-title">Продлить подписку</h3>
+                            <div class="modal-body">
+                                <div class="form-group">
+                                    <label class="form-label">Количество дней</label>
+                                    <input type="number" id="extend-days" class="form-input" value="30" min="1" max="365">
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn" onclick="closeModal()">Отмена</button>
+                                <button class="btn btn-primary" onclick="submitExtend()">Продлить</button>
                             </div>
                         </div>
-                        <div class="modal-footer">
-                            <button class="btn" onclick="closeModal()">Отмена</button>
-                            <button class="btn btn-primary" onclick="submitExtend()">Продлить</button>
+                    </div>
+                `;
+            }
+
+            if (state.modal.type === 'topup') {
+                return `
+                    <div class="modal-overlay" onclick="closeModal()">
+                        <div class="modal" onclick="event.stopPropagation()">
+                            <h3 class="modal-title">Начислить баланс</h3>
+                            <div class="modal-body">
+                                <div class="form-group">
+                                    <label class="form-label">Пользователь</label>
+                                    <div style="padding:12px;background:var(--onyx-black);border-radius:10px;font-size:14px;">
+                                        ${state.modal.username || '—'} (tg_id: ${state.modal.tgId})
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Сумма (₽)</label>
+                                    <input type="number" id="topup-amount" class="form-input" value="100" min="1" step="1">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Комментарий (необязательно)</label>
+                                    <input type="text" id="topup-comment" class="form-input" placeholder="Например: подарок">
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn" onclick="closeModal()">Отмена</button>
+                                <button class="btn btn-primary" onclick="submitTopUp()">Начислить</button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            `;
+                `;
+            }
+
+            return '';
         }
 
         // Основной рендер
@@ -713,6 +773,21 @@ async def admin_ui(request: Request):
         function showExtendModal(subscriptionId) {
             state.modal = { type: 'extend', subscriptionId };
             render();
+        }
+
+        function showTopUpModal(tgId, username) {
+            state.modal = { type: 'topup', tgId, username };
+            render();
+        }
+
+        function submitTopUp() {
+            const amountInput = document.getElementById('topup-amount');
+            const commentInput = document.getElementById('topup-comment');
+            const amount = parseFloat(amountInput.value);
+            const comment = commentInput.value.trim() || null;
+            if (state.modal && state.modal.type === 'topup' && amount > 0) {
+                handleTopUp(state.modal.tgId, amount, comment);
+            }
         }
 
         function closeModal() {

@@ -93,6 +93,7 @@ class SubscriptionOut(BaseModel):
     id: int
     user_tg_id: int
     username: str | None = None
+    balance: int = 0
     uuid: str
     plan_type: str
     expires_at: str
@@ -127,6 +128,24 @@ class RevokeResponse(BaseModel):
     """Результат отзыва ключа."""
 
     id: int
+    message: str
+
+
+class TopUpRequest(BaseModel):
+    """Запрос на начисление баланса."""
+
+    amount_rubles: float = Field(ge=0.01, description="Сумма в рублях")
+    comment: str | None = Field(default=None, description="Комментарий")
+
+
+class TopUpResponse(BaseModel):
+    """Результат начисления баланса."""
+
+    user_tg_id: int
+    username: str | None
+    old_balance: int
+    new_balance: int
+    amount_rubles: float
     message: str
 
 
@@ -278,6 +297,7 @@ async def list_subscriptions(
             id=sub.id,
             user_tg_id=sub.user.tg_id,
             username=sub.user.username,
+            balance=sub.user.balance,
             uuid=sub.uuid,
             plan_type=sub.plan_type,
             expires_at=sub.expires_at.isoformat(),
@@ -408,4 +428,55 @@ async def revoke_subscription(
     return RevokeResponse(
         id=subscription_id,
         message="Ключ отозван",
+    )
+
+
+# ─────────────────────────────────────────────────────────
+# Начисление баланса
+# ─────────────────────────────────────────────────────────
+
+@router.post("/users/{tg_id}/topup", response_model=TopUpResponse)
+async def topup_user_balance(
+    tg_id: int,
+    body: TopUpRequest,
+    admin_tg_id: Annotated[int, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> TopUpResponse:
+    """
+    Начислить баланс пользователю вручную.
+
+    Сумма в рублях, в БД хранится в копейках.
+    """
+    # Ищем пользователя по tg_id
+    query = select(User).where(User.tg_id == tg_id)
+    result = await session.execute(query)
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не найден",
+        )
+
+    old_balance = user.balance
+    amount_kopecks = int(round(body.amount_rubles * 100))
+    user.balance += amount_kopecks
+    await session.commit()
+
+    logger.info(
+        "Админ tg_id=%s начислил %s руб. пользователю tg_id=%s (баланс: %s → %s коп.)",
+        admin_tg_id,
+        body.amount_rubles,
+        tg_id,
+        old_balance,
+        user.balance,
+    )
+
+    return TopUpResponse(
+        user_tg_id=user.tg_id,
+        username=user.username,
+        old_balance=old_balance,
+        new_balance=user.balance,
+        amount_rubles=body.amount_rubles,
+        message=f"Начислено {body.amount_rubles} ₽",
     )

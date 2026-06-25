@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Toast } from './Toast'
 
 interface VpnScreenProps {
   hasActiveSubscription: boolean
@@ -7,7 +6,6 @@ interface VpnScreenProps {
   connectionUrl: string | null
   onActivateTrial: () => Promise<void>
   trialExpiresAt: string | null
-  platform?: 'ios' | 'android' | 'desktop'
 }
 
 export function VpnScreen({
@@ -16,21 +14,15 @@ export function VpnScreen({
   connectionUrl,
   onActivateTrial,
   trialExpiresAt,
-  platform = 'desktop',
 }: VpnScreenProps) {
-  const [showToast, setShowToast] = useState(false)
-  const [toastMessage, setToastMessage] = useState('')
-  const [isConnecting, setIsConnecting] = useState(false)
-  const [isConnected, setIsConnected] = useState(false)
   const [showInstructions, setShowInstructions] = useState(false)
-  const [appNotInstalled, setAppNotInstalled] = useState(false)
 
   const handleActivateTrial = async () => {
     await onActivateTrial()
     setShowInstructions(true)
   }
 
-  const handleConnect = async () => {
+  const handleConnect = () => {
     if (!connectionUrl) {
       const step1 = document.querySelector('.stepper-step')
       if (step1) {
@@ -40,72 +32,8 @@ export function VpnScreen({
       return
     }
 
-    setIsConnecting(true)
-
-    // Копируем ключ в буфер обмена
-    try {
-      await navigator.clipboard.writeText(connectionUrl)
-    } catch {
-      setToastMessage('Не удалось скопировать ключ')
-      setShowToast(true)
-      setIsConnecting(false)
-      return
-    }
-
-    if (platform === 'ios' || platform === 'android') {
-      // Ключ уже в буфере. Пробуем открыть Amnezia через vpn:// URL
-      // Используем iframe-трюк для обхода ограничений WebView
-      const iframe = document.createElement('iframe')
-      iframe.style.display = 'none'
-      iframe.src = connectionUrl
-      document.body.appendChild(iframe)
-
-      // Также пробуем window.open как fallback
-      setTimeout(() => {
-        window.open(connectionUrl, '_blank')
-      }, 100)
-
-      // Если через 2 секунды страница всё ещё видна — приложение не установлено
-      setTimeout(() => {
-        document.body.removeChild(iframe)
-        if (!document.hidden) {
-          setAppNotInstalled(true)
-        } else {
-          setIsConnected(true)
-          setToastMessage('Открываем Amnezia...')
-          setShowToast(true)
-        }
-        setIsConnecting(false)
-      }, 2000)
-    } else {
-      // Desktop: показываем инструкцию с копированием
-      setTimeout(() => {
-        setIsConnecting(false)
-        setIsConnected(true)
-        setToastMessage('Ключ скопирован! Вставьте его в Amnezia на компьютере')
-        setShowToast(true)
-      }, 500)
-    }
-  }
-
-  const handleInstallApp = () => {
-    if (platform === 'ios') {
-      window.open('https://apps.apple.com/app/amnezia-vpn', '_blank')
-    } else if (platform === 'android') {
-      window.open('https://play.google.com/store/apps/details?id=org.amnezia.vpn', '_blank')
-    }
-  }
-
-  const handleCopyKeyAgain = async () => {
-    if (!connectionUrl) return
-    try {
-      await navigator.clipboard.writeText(connectionUrl)
-      setToastMessage('Ключ скопирован!')
-      setShowToast(true)
-    } catch {
-      setToastMessage('Ошибка копирования')
-      setShowToast(true)
-    }
+    // Открываем Amnezia через vpn:// диплинк
+    window.location.href = connectionUrl
   }
 
   // Экран предложения триала (новый пользователь, ни разу не активировал)
@@ -203,77 +131,15 @@ export function VpnScreen({
           <div className="stepper-content">
             <h3 className="stepper-title">Подключите OnyxVpn</h3>
             <p className="stepper-description">
-              Скопируйте конфигурацию и откройте Amnezia
+              Нажмите кнопку — Amnezia откроется автоматически
             </p>
 
-            {!isConnected && !appNotInstalled ? (
-              <button
-                className={`connect-button ${isConnecting ? 'connect-button-loading' : ''}`}
-                onClick={handleConnect}
-                disabled={isConnecting}
-              >
-                {isConnecting ? (
-                  <>
-                    <span className="connect-button-spinner" />
-                    Подключение...
-                  </>
-                ) : (
-                  <>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                    Подключить OnyxVpn
-                  </>
-                )}
-              </button>
-            ) : appNotInstalled ? (
-              <div className="app-not-installed">
-                <div className="app-not-installed-icon">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="12" cy="12" r="10" />
-                    <path d="M12 8V12M12 16H12.01" strokeLinecap="round" />
-                  </svg>
-                </div>
-                <div className="app-not-installed-text">
-                  <div className="app-not-installed-title">Amnezia VPN не установлена</div>
-                  <div className="app-not-installed-subtitle">
-                    Установите приложение, чтобы подключиться к VPN
-                  </div>
-                </div>
-                <button className="app-not-installed-button" onClick={handleInstallApp}>
-                  Установить Amnezia VPN
-                </button>
-                <button className="app-not-installed-retry" onClick={() => {
-                  setAppNotInstalled(false)
-                  handleConnect()
-                }}>
-                  Попробовать снова
-                </button>
-              </div>
-            ) : (
-              <div className="vpn-status vpn-status-active">
-                <div className="vpn-status-icon">
-                  <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                    <circle cx="16" cy="16" r="14" fill="#10B981" opacity="0.2" />
-                    <circle cx="16" cy="16" r="10" fill="#10B981" opacity="0.4" />
-                    <circle cx="16" cy="16" r="6" fill="#10B981" />
-                  </svg>
-                </div>
-                <div className="vpn-status-text">
-                  <div className="vpn-status-title">VPN Готов к работе</div>
-                  <div className="vpn-status-subtitle">
-                    {platform === 'desktop'
-                      ? 'Откройте Amnezia → нажмите «Добавить сервер» → «Вставить из буфера»'
-                      : 'Ключ импортирован в Amnezia'}
-                  </div>
-                  {platform === 'desktop' && (
-                    <button className="vpn-status-copy" onClick={handleCopyKeyAgain}>
-                      Скопировать ключ снова
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
+            <button className="connect-button" onClick={handleConnect}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Подключить OnyxVpn
+            </button>
           </div>
         </div>
       </div>
@@ -287,12 +153,6 @@ export function VpnScreen({
           <span>Триал до {new Date(trialExpiresAt).toLocaleDateString('ru-RU')}</span>
         </div>
       )}
-
-      <Toast
-        message={toastMessage}
-        visible={showToast}
-        onHide={() => setShowToast(false)}
-      />
     </div>
   )
 }

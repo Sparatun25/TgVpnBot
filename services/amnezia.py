@@ -237,29 +237,39 @@ def _build_vpn_key(
     """
     port = server_params.get("ListenPort", "45019")
 
-    # Строгий формат под парсер мобильных приложений Amnezia
+    # Полный формат AmneziaWG со всеми параметрами обфускации
     payload = {
         "containers": [
             {
-                "container": "amnezia-awg",
-                "hostName": str(settings.amnezia_server_host).strip(),
-                "port": str(port),
-                "transportProto": "udp",
+                "container": "amnezia_awg",
                 "awg": {
+                    "address": f"{client_ip}/32",
+                    "allowedIps": "0.0.0.0/0, ::/0",
                     "clientPrivKey": str(client_priv_key).strip(),
-                    "peerPubKey": str(server_pubkey).strip(),
-                    "clientIp": f"{client_ip}/32",
-                    "allowedIps": "0.0.0.0/0",
-                    "dns": "1.1.1.1",
-                    "Jc": server_params.get("Jc", "4"),
-                    "Jmax": server_params.get("Jmax", "1000"),
-                    "Jmin": server_params.get("Jmin", "50"),
-                    "S1": server_params.get("S1", "15"),
-                    "S2": server_params.get("S2", "23"),
+                    "hostName": str(settings.amnezia_server_host).strip(),
+                    "H1": server_params.get("H1", ""),
+                    "H2": server_params.get("H2", ""),
+                    "H3": server_params.get("H3", ""),
+                    "H4": server_params.get("H4", ""),
+                    "Jc": server_params.get("Jc", ""),
+                    "Jmax": server_params.get("Jmax", ""),
+                    "Jmin": server_params.get("Jmin", ""),
+                    "mtu": "1376",
+                    "persistentKeepAlive": "25",
+                    "port": port,
+                    "pskKey": str(psk).strip(),
+                    "S1": server_params.get("S1", ""),
+                    "S2": server_params.get("S2", ""),
+                    "S3": server_params.get("S3", ""),
+                    "S4": server_params.get("S4", ""),
+                    "serverPubKey": str(server_pubkey).strip(),
                 },
             }
         ],
+        "defaultContainer": "amnezia_awg",
         "description": "Onyx Premium",
+        "dns1": "1.1.1.1",
+        "dns2": "1.0.0.1",
         "hostName": str(settings.amnezia_server_host).strip(),
     }
 

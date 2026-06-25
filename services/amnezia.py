@@ -237,7 +237,8 @@ def _build_vpn_key(
     """
     Собрать vpn:// URL для импорта в AmneziaVPN.
 
-    Формат: vpn://base64url(4-byte magic + zlib(json_payload))
+    Формат: vpn://base64(4-byte magic + zlib(json_payload))
+    Base64 без переносов строк, UTF-8.
     """
     last_config = {
         "allowed_ips": ["0.0.0.0/0", "::/0"],
@@ -256,7 +257,7 @@ def _build_vpn_key(
     payload = {
         "containers": [
             {
-                "awg": {
+                "amnezia_awg": {
                     "H1": server_params.get("H1", ""),
                     "H2": server_params.get("H2", ""),
                     "H3": server_params.get("H3", ""),
@@ -268,16 +269,16 @@ def _build_vpn_key(
                     "S2": server_params.get("S2", ""),
                     "S3": server_params.get("S3", ""),
                     "S4": server_params.get("S4", ""),
-                    "last_config": json.dumps(last_config),
+                    "last_config": json.dumps(last_config, separators=(",", ":")),
                     "port": server_params.get("ListenPort", "45019"),
                     "protocol_version": "2",
                     "subnet_address": "10.8.1.0",
                     "transport_proto": "udp",
                 },
-                "container": "awg",
+                "container": "amnezia_awg",
             }
         ],
-        "defaultContainer": "awg",
+        "defaultContainer": "amnezia_awg",
         "description": "OnyxVpn",
         "dns1": "1.1.1.1",
         "dns2": "1.0.0.1",

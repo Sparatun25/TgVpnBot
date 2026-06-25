@@ -233,38 +233,44 @@ def _build_vpn_key(
     """
     Собрать vpn:// URL для импорта в AmneziaVPN.
 
-    Формат: vpn://base64(compact_json) — без magic bytes, без zlib.
+    Формат: vpn://base64(compact_json) — строгий формат без пробелов.
     """
     port = server_params.get("ListenPort", "45019")
 
+    # Строгий формат под парсер мобильных приложений Amnezia
     payload = {
         "containers": [
             {
                 "container": "amnezia-awg",
-                "hostName": "Onyx VPN",
+                "hostName": str(settings.amnezia_server_host).strip(),
                 "port": str(port),
                 "transportProto": "udp",
                 "awg": {
-                    "Jc": server_params.get("Jc", ""),
-                    "Jmax": server_params.get("Jmax", ""),
-                    "Jmin": server_params.get("Jmin", ""),
-                    "S1": server_params.get("S1", ""),
-                    "S2": server_params.get("S2", ""),
-                    "allowedIps": "0.0.0.0/0",
+                    "clientPrivKey": str(client_priv_key).strip(),
+                    "peerPubKey": str(server_pubkey).strip(),
                     "clientIp": f"{client_ip}/32",
-                    "clientPrivKey": client_priv_key.strip(),
+                    "allowedIps": "0.0.0.0/0",
                     "dns": "1.1.1.1",
-                    "peerPubKey": server_pubkey.strip(),
+                    "Jc": server_params.get("Jc", "4"),
+                    "Jmax": server_params.get("Jmax", "1000"),
+                    "Jmin": server_params.get("Jmin", "50"),
+                    "S1": server_params.get("S1", "15"),
+                    "S2": server_params.get("S2", "23"),
                 },
             }
         ],
-        "description": "OnyxVpn",
-        "hostName": settings.amnezia_server_host,
+        "description": "Onyx Premium",
+        "hostName": str(settings.amnezia_server_host).strip(),
     }
 
-    compact_json = json.dumps(payload, separators=(",", ":"))
-    encoded = base64.b64encode(compact_json.encode("utf-8")).decode("utf-8")
-    return f"vpn://{encoded.replace(chr(10), '').replace(chr(13), '').replace(' ', '')}"
+    # Сериализация без едино��о лишнего пробела
+    json_str = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+
+    # Кодирование в Base64 с полной зачисткой управляющих символов
+    b64_str = base64.b64encode(json_str.encode("utf-8")).decode("utf-8")
+    cleaned_key = b64_str.replace("\n", "").replace("\r", "").replace(" ", "")
+
+    return f"vpn://{cleaned_key}"
 
 
 def _build_client_config(

@@ -496,11 +496,10 @@ async def debug_vpn_key(
     Показывает:
     - Полный vpn:// URL
     - Декодированный JSON payload
-    - Структуру last_config
+    - Конфигурацию awg
     """
     import base64
     import json
-    import zlib
 
     try:
         # Генерируем тестовый ключ

@@ -22,7 +22,7 @@ export function VpnScreen({
     setShowInstructions(true)
   }
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
     if (!connectionUrl) {
       const step1 = document.querySelector('.stepper-step')
       if (step1) {
@@ -32,31 +32,32 @@ export function VpnScreen({
       return
     }
 
-    const downloadUrlAndroid = 'https://play.google.com/store/apps/details?id=org.amnezia.vpn'
-    const downloadUrlIos = 'https://apps.apple.com/app/amnezia-vpn/id1600460865'
-
-    const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera
-    const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !(window as any).MSStream
-
-    const blurHandler = () => {
-      // Приложение открылось — страница ушла в фон
-    }
-    window.addEventListener('blur', blurHandler)
-
-    // Пытаемся открыть AmneziaVPN через диплинк
-    window.location.href = connectionUrl
-
-    // Если через 1.5с страница в фокусе — приложения нет, редиректим в маркет
-    setTimeout(() => {
-      window.removeEventListener('blur', blurHandler)
-      if (document.hasFocus()) {
-        if (isIOS) {
-          window.location.href = downloadUrlIos
-        } else {
-          window.location.href = downloadUrlAndroid
-        }
+    try {
+      // Действие 1: Копирование ключа в буфер обмена
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(connectionUrl)
+      } else {
+        // Резервный метод для старых WebView
+        const textArea = document.createElement('textarea')
+        textArea.value = connectionUrl
+        textArea.style.position = 'fixed'
+        textArea.style.opacity = '0'
+        document.body.appendChild(textArea)
+        textArea.focus()
+        textArea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textArea)
       }
-    }, 1500)
+
+      console.log('Ключ скопирован в буфер')
+
+      // Действие 2: Открытие AmneziaVPN через диплинк
+      window.location.href = connectionUrl
+    } catch (err) {
+      console.error('Ошибка копирования/открытия:', err)
+      // Fallback: пытаемся открыть напрямую
+      window.open(connectionUrl, '_self')
+    }
   }
 
   // Экран предложения триала (новый пользователь, ни разу не активировал)
@@ -154,7 +155,7 @@ export function VpnScreen({
           <div className="stepper-content">
             <h3 className="stepper-title">Подключите OnyxVpn</h3>
             <p className="stepper-description">
-              Нажмите кнопку — Amnezia откроется автоматически
+              Нажмите кнопку — ключ скопируется, Amnezia откроется автоматически
             </p>
 
             <button className="connect-button" onClick={handleConnect}>

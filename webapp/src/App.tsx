@@ -9,7 +9,7 @@ import { ProfileScreen } from './components/ProfileScreen'
 type Tab = 'vpn' | 'tariffs' | 'balance' | 'profile'
 
 export default function App() {
-  const { user, getInitData, platform } = useTelegram()
+  const { user, getInitData } = useTelegram()
   const { loading, error, getProfile, activateTrial } = useApi(getInitData)
   const [activeTab, setActiveTab] = useState<Tab>('vpn')
   const [profile, setProfile] = useState<ProfileData | null>(null)

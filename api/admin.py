@@ -509,18 +509,15 @@ async def debug_vpn_key(
         # Декодируем для проверки
         encoded_part = vpn_url.replace("vpn://", "")
         decoded_bytes = base64.b64decode(encoded_part)
-        compressed_data = decoded_bytes[4:]  # Пропускаем magic bytes
-        json_bytes = zlib.decompress(compressed_data)
-        payload = json.loads(json_bytes.decode("utf-8"))
+        payload = json.loads(decoded_bytes.decode("utf-8"))
 
         return {
             "success": True,
             "vpn_url": vpn_url,
             "client_pub_key": client_pub_key,
             "decoded_payload": payload,
-            "last_config": json.loads(payload["containers"][0]["awg"]["last_config"]),
+            "awg_config": payload["containers"][0]["awg"],
             "container_field": payload["containers"][0]["container"],
-            "default_container": payload["defaultContainer"],
         }
     except Exception as e:
         logger.exception("Ошибка генерации debug ключа: %s", e)

@@ -6,7 +6,6 @@ import json
 import logging
 import re
 import uuid
-import zlib
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -19,9 +18,6 @@ logger = logging.getLogger(__name__)
 
 # Таймаут для Docker-команд (секунды)
 DOCKER_TIMEOUT = 30
-
-# Magic header для vpn:// ключа Amnezia
-VPN_MAGIC = b"\x00\x00\x0b\x50"
 
 
 # ─────────────────────────────────────────────────────────
@@ -237,58 +233,38 @@ def _build_vpn_key(
     """
     Собрать vpn:// URL для импорта в AmneziaVPN.
 
-    Формат: vpn://base64(4-byte magic + zlib(json_payload))
-    Base64 без переносов строк, UTF-8.
+    Формат: vpn://base64(compact_json) — без magic bytes, без zlib.
     """
-    last_config = {
-        "allowed_ips": ["0.0.0.0/0", "::/0"],
-        "client_ip": client_ip,
-        "client_priv_key": client_priv_key,
-        "client_pub_key": client_pub_key,
-        "config": client_config,
-        "hostName": settings.amnezia_server_host,
-        "mtu": "1376",
-        "persistent_keep_alive": "25",
-        "port": server_params.get("ListenPort", "45019"),
-        "psk_key": psk,
-        "server_pub_key": server_pubkey,
-    }
+    port = server_params.get("ListenPort", "45019")
 
     payload = {
         "containers": [
             {
-                "amnezia_awg": {
-                    "H1": server_params.get("H1", ""),
-                    "H2": server_params.get("H2", ""),
-                    "H3": server_params.get("H3", ""),
-                    "H4": server_params.get("H4", ""),
+                "container": "amnezia-awg",
+                "hostName": "Onyx VPN",
+                "port": str(port),
+                "transportProto": "udp",
+                "awg": {
                     "Jc": server_params.get("Jc", ""),
                     "Jmax": server_params.get("Jmax", ""),
                     "Jmin": server_params.get("Jmin", ""),
                     "S1": server_params.get("S1", ""),
                     "S2": server_params.get("S2", ""),
-                    "S3": server_params.get("S3", ""),
-                    "S4": server_params.get("S4", ""),
-                    "last_config": json.dumps(last_config, separators=(",", ":")),
-                    "port": server_params.get("ListenPort", "45019"),
-                    "protocol_version": "2",
-                    "subnet_address": "10.8.1.0",
-                    "transport_proto": "udp",
+                    "allowedIps": "0.0.0.0/0",
+                    "clientIp": f"{client_ip}/32",
+                    "clientPrivKey": client_priv_key.strip(),
+                    "dns": "1.1.1.1",
+                    "peerPubKey": server_pubkey.strip(),
                 },
-                "container": "amnezia_awg",
             }
         ],
-        "defaultContainer": "amnezia_awg",
         "description": "OnyxVpn",
-        "dns1": "1.1.1.1",
-        "dns2": "1.0.0.1",
         "hostName": settings.amnezia_server_host,
     }
 
-    json_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
-    compressed = zlib.compress(json_bytes)
-    encoded = base64.b64encode(VPN_MAGIC + compressed).decode("ascii")
-    return f"vpn://{encoded}"
+    compact_json = json.dumps(payload, separators=(",", ":"))
+    encoded = base64.b64encode(compact_json.encode("utf-8")).decode("utf-8")
+    return f"vpn://{encoded.replace(chr(10), '').replace(chr(13), '').replace(' ', '')}"
 
 
 def _build_client_config(

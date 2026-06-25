@@ -32,8 +32,31 @@ export function VpnScreen({
       return
     }
 
-    // Открываем Amnezia через vpn:// диплинк
+    const downloadUrlAndroid = 'https://play.google.com/store/apps/details?id=org.amnezia.vpn'
+    const downloadUrlIos = 'https://apps.apple.com/app/amnezia-vpn/id1600460865'
+
+    const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera
+    const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !(window as any).MSStream
+
+    const blurHandler = () => {
+      // Приложение открылось — страница ушла в фон
+    }
+    window.addEventListener('blur', blurHandler)
+
+    // Пытаемся открыть AmneziaVPN через диплинк
     window.location.href = connectionUrl
+
+    // Если через 1.5с страница в фокусе — приложения нет, редиректим в маркет
+    setTimeout(() => {
+      window.removeEventListener('blur', blurHandler)
+      if (document.hasFocus()) {
+        if (isIOS) {
+          window.location.href = downloadUrlIos
+        } else {
+          window.location.href = downloadUrlAndroid
+        }
+      }
+    }, 1500)
   }
 
   // Экран предложения триала (новый пользователь, ни разу не активировал)

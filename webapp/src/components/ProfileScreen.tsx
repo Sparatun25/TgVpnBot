@@ -116,6 +116,41 @@ export function ProfileScreen({ user, subscriptionExpiresAt, referralCode }: Pro
           <div className="profile-stat-label">Заработано</div>
         </div>
       </div>
+
+      <div className="profile-section">
+        <h3 className="profile-section-title">Информация</h3>
+        <div className="profile-links">
+          <a href="/pricing" target="_blank" className="profile-link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="12" y1="1" x2="12" y2="23" />
+              <path d="M17 5H9.5A3.5 3.5 0 0 0 9.5 12H14.5A3.5 3.5 0 0 1 14.5 19H5" />
+            </svg>
+            <span>Тарифы и цены</span>
+          </a>
+          <a href="/privacy" target="_blank" className="profile-link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 22S8 18 8 12V6L12 2L16 6V12C16 18 12 22 12 22Z" />
+            </svg>
+            <span>Политика конфиденциальности</span>
+          </a>
+          <a href="/terms" target="_blank" className="profile-link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M14 2H6A2 2 0 0 0 4 4V20A2 2 0 0 0 6 20H18A2 2 0 0 0 20 18V8L14 2Z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
+            </svg>
+            <span>Пользовательское соглашение</span>
+          </a>
+          <a href="https://t.me/OnyxVpnSupport" target="_blank" className="profile-link">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M21 11.5A8.38 8.38 0 0 1 12.5 20A8.5 8.5 0 0 1 3 11.5A8.38 8.38 0 0 1 11.5 3A8.5 8.5 0 0 1 21 11.5Z" />
+              <path d="M8 12L11 15L16 9" />
+            </svg>
+            <span>Поддержка</span>
+          </a>
+        </div>
+      </div>
     </div>
   )
 }

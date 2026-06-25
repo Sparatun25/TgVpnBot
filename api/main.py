@@ -5,7 +5,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from pathlib import Path
 
 from api.routes import router
 from api.admin_ui import router as admin_ui_router
@@ -78,6 +79,22 @@ async def general_exception_handler(request: Request, exc: Exception):
 async def health_check():
     """Проверка здоровья API."""
     return {"status": "ok"}
+
+
+# Статические страницы документации
+STATIC_DIR = Path(__file__).parent / "static"
+
+@app.get("/privacy")
+async def privacy_page():
+    return FileResponse(STATIC_DIR / "privacy.html")
+
+@app.get("/terms")
+async def terms_page():
+    return FileResponse(STATIC_DIR / "terms.html")
+
+@app.get("/pricing")
+async def pricing_page():
+    return FileResponse(STATIC_DIR / "pricing.html")
 
 
 if __name__ == "__main__":

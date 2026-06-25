@@ -987,6 +987,37 @@ body {
   color: var(--onyx-text-muted);
 }
 
+.profile-links {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.profile-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--onyx-dark);
+  border: 1px solid var(--onyx-gray);
+  border-radius: 12px;
+  color: var(--onyx-text);
+  text-decoration: none;
+  transition: all 0.2s ease;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.profile-link:hover {
+  background: var(--onyx-gray);
+  border-color: var(--onyx-accent);
+}
+
+.profile-link svg {
+  flex-shrink: 0;
+  color: var(--onyx-accent);
+}
+
 /* Toast */
 .toast {
   position: fixed;

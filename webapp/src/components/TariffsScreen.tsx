@@ -1,38 +1,44 @@
 import { useState } from 'react'
-import { useApi } from '../hooks/useApi'
+import { motion } from 'framer-motion'
 import { useTelegram } from '../hooks/useTelegram'
+import { useApi } from '../hooks/useApi'
+import { TopUpBottomSheet } from './TopUpBottomSheet'
 
 interface Tariff {
   id: string
   name: string
   price: number
+  monthlyPrice?: number
+  savings?: number
   period: string
-  features: string[]
+  badge?: string
   popular?: boolean
 }
 
 const tariffs: Tariff[] = [
   {
-    id: 'monthly',
-    name: 'Месяц',
-    price: 249,
-    period: '30 дней',
-    features: ['Безлимитный трафик', 'Все серверы', '1 устройство'],
+    id: 'year',
+    name: 'Год',
+    price: 1490,
+    monthlyPrice: 124,
+    savings: 1498,
+    period: '365 дней',
+    badge: 'Лучшее предложение',
+    popular: true,
   },
   {
     id: 'quarter',
     name: '3 месяца',
-    price: 650,
+    price: 649,
+    monthlyPrice: 216,
+    savings: 98,
     period: '90 дней',
-    features: ['Безлимитный трафик', 'Все серверы', '2 устройства', 'Экономия 13%'],
-    popular: true,
   },
   {
-    id: 'year',
-    name: 'Год',
-    price: 1150,
-    period: '365 дней',
-    features: ['Безлимитный трафик', 'Все серверы', '3 устройства', 'Экономия 67%'],
+    id: 'monthly',
+    name: 'Месяц',
+    price: 249,
+    period: '30 дней',
   },
 ]
 
@@ -41,17 +47,18 @@ interface TariffsScreenProps {
 }
 
 export function TariffsScreen({ balance }: TariffsScreenProps) {
-  const { getInitData } = useTelegram()
+  const { tg, getInitData } = useTelegram()
   const { purchaseSubscription } = useApi(getInitData)
   const [purchasing, setPurchasing] = useState<string | null>(null)
+  const [showTopUp, setShowTopUp] = useState(false)
+  const [requiredAmount, setRequiredAmount] = useState(0)
 
   const handleBuy = async (tariff: Tariff) => {
-    if (balance < tariff.price * 100) {
-      alert('Недостаточно средств на балансе. Пополните через СБП.')
-      return
-    }
+    tg?.HapticFeedback?.impactOccurred('light')
 
-    if (!confirm(`Купить подписку "${tariff.name}" за ${tariff.price} ₽?`)) {
+    if (balance < tariff.price * 100) {
+      setRequiredAmount(tariff.price - balance / 100)
+      setShowTopUp(true)
       return
     }
 
@@ -60,71 +67,104 @@ export function TariffsScreen({ balance }: TariffsScreenProps) {
     setPurchasing(null)
 
     if (result) {
-      alert(`Подписка активирована до ${new Date(result.expires_at).toLocaleDateString('ru-RU')}`)
-      // Перезагружаем страницу, чтобы обновить профиль
+      tg?.HapticFeedback?.notificationOccurred('success')
       window.location.reload()
     }
   }
 
+  const handlePaymentSuccess = () => {
+    window.location.reload()
+  }
+
   return (
-    <div className="tariffs-screen">
-      <h2 className="screen-title">Тарифы</h2>
-      <p className="screen-subtitle">Выберите подходящий план</p>
+    <motion.div
+      className="tariffs-screen"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4 }}
+    >
+      <motion.div
+        className="value-proposition"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+      >
+        <h2 className="screen-title">Почему пользователи выбирают Onyx VPN</h2>
+        <div className="value-points">
+          <div className="value-point">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+              <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span>Безлимитный трафик</span>
+          </div>
+          <div className="value-point">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+              <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span>Высокая скорость</span>
+          </div>
+          <div className="value-point">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+              <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span>Поддержка нескольких устройств</span>
+          </div>
+          <div className="value-point">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+              <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span>Быстрое подключение</span>
+          </div>
+        </div>
+      </motion.div>
 
       <div className="tariffs-grid">
-        {tariffs.map((tariff) => {
-          const canAfford = balance >= tariff.price * 100
-          const isPurchasing = purchasing === tariff.id
+        {tariffs.map((tariff, index) => (
+          <motion.div
+            key={tariff.id}
+            className={`tariff-card ${tariff.popular ? 'tariff-card-popular' : ''}`}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.2 + index * 0.1 }}
+          >
+            {tariff.badge && <div className="tariff-badge">{tariff.badge}</div>}
 
-          return (
-            <div
-              key={tariff.id}
-              className={`tariff-card ${tariff.popular ? 'tariff-card-popular' : ''}`}
-            >
-              {tariff.popular && (
-                <div className="tariff-badge">Популярный</div>
-              )}
-
-              <div className="tariff-info">
-                <div className="tariff-header">
-                  <h3 className="tariff-name">{tariff.name}</h3>
-                  <div className="tariff-period">{tariff.period}</div>
-                </div>
-                <div className="tariff-price">
-                  <span className="tariff-price-value">{tariff.price}</span>
-                  <span className="tariff-price-currency">₽</span>
-                </div>
-              </div>
-
-              <div className="tariff-action">
-                <button
-                  className={`tariff-button ${!canAfford ? 'tariff-button-disabled' : ''}`}
-                  onClick={() => handleBuy(tariff)}
-                  disabled={!canAfford || isPurchasing}
-                >
-                  {isPurchasing ? '...' : !canAfford ? 'Нет средств' : 'Купить'}
-                </button>
-              </div>
+            <div className="tariff-header">
+              <h3 className="tariff-name">{tariff.name}</h3>
+              <div className="tariff-period">{tariff.period}</div>
             </div>
-          )
-        })}
+
+            <div className="tariff-pricing">
+              <div className="tariff-price">
+                <span className="tariff-price-value">{tariff.price}</span>
+                <span className="tariff-price-currency">₽</span>
+              </div>
+              {tariff.monthlyPrice && (
+                <div className="tariff-monthly">{tariff.monthlyPrice} ₽ / месяц</div>
+              )}
+              {tariff.savings && (
+                <div className="tariff-savings">Экономия {tariff.savings} ₽</div>
+              )}
+            </div>
+
+            <motion.button
+              className="tariff-button"
+              onClick={() => handleBuy(tariff)}
+              disabled={purchasing === tariff.id}
+              whileTap={{ scale: 0.96 }}
+            >
+              {purchasing === tariff.id ? 'Подключение...' : 'Подключить'}
+            </motion.button>
+          </motion.div>
+        ))}
       </div>
 
-      <div className="tariffs-info">
-        <div className="tariffs-info-item">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="2" y="3" width="20" height="14" rx="2" />
-            <path d="M8 21H16M12 17V21" strokeLinecap="round" />
-          </svg>
-          <span>YouTube, Instagram и другие сервисы</span>
-        </div>
-        <div className="tariffs-info-item">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 22S8 18 8 12V6L12 2L16 6V12C16 18 12 22 12 22Z" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span>Полная анонимность и безопасность</span>
-        </div>
-      </div>
-    </div>
+      <TopUpBottomSheet
+        isOpen={showTopUp}
+        onClose={() => setShowTopUp(false)}
+        requiredAmount={requiredAmount}
+        onPaymentSuccess={handlePaymentSuccess}
+      />
+    </motion.div>
   )
 }

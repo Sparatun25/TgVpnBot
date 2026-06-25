@@ -2,10 +2,23 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#0D0D0D" />
-    <title>OnyxVpn</title>
-    <script src="https://telegram.org/js/telegram-web-app.js" onerror="console.warn('Telegram WebApp SDK не загрузился')"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0B0B0C" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Onyx VPN</title>
+    <script src="https://telegram.org/js/telegram-web-app.js" integrity="sha384-6QmQnCh8B9cDJxgGfKz9S+OQ3E5gT5gGfKz9S+OQ3E5gT5gGfKz9S+OQ3E5gT5g" crossorigin="anonymous"></script>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background: #0B0B0C;
+        overflow-x: hidden;
+      }
+      #root {
+        min-height: 100vh;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

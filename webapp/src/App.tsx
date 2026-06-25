@@ -1,49 +1,103 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
+import { AnimatePresence } from 'framer-motion'
 import { useTelegram } from './hooks/useTelegram'
 import { useApi, ProfileData } from './hooks/useApi'
-import { VpnScreen } from './components/VpnScreen'
+import { useOnboarding } from './hooks/useOnboarding'
+import { WelcomeScreen } from './components/onboarding/WelcomeScreen'
+import { InstallScreen } from './components/onboarding/InstallScreen'
+import { PreparingScreen } from './components/onboarding/PreparingScreen'
+import { ConnectScreen } from './components/onboarding/ConnectScreen'
+import { WaitingScreen } from './components/onboarding/WaitingScreen'
+import { SuccessScreen } from './components/onboarding/SuccessScreen'
+import { DashboardScreen } from './components/DashboardScreen'
 import { TariffsScreen } from './components/TariffsScreen'
 import { BalanceScreen } from './components/BalanceScreen'
 import { ProfileScreen } from './components/ProfileScreen'
+import { BottomNav } from './components/BottomNav'
+import { TopUpBottomSheet } from './components/TopUpBottomSheet'
 
-type Tab = 'vpn' | 'tariffs' | 'balance' | 'profile'
+type MainTab = 'dashboard' | 'tariffs' | 'balance' | 'profile'
 
 export default function App() {
-  const { user, getInitData } = useTelegram()
+  const { user, getInitData, tg } = useTelegram()
   const { loading, error, getProfile, activateTrial } = useApi(getInitData)
-  const [activeTab, setActiveTab] = useState<Tab>('vpn')
+  const { step, setStep, goNext, goBack } = useOnboarding()
+
   const [profile, setProfile] = useState<ProfileData | null>(null)
-  const [hasUsedTrial, setHasUsedTrial] = useState(false)
+  const [activeTab, setActiveTab] = useState<MainTab>('dashboard')
+  const [showTopUp, setShowTopUp] = useState(false)
+  const [requiredAmount, setRequiredAmount] = useState(0)
 
-  // Не блокируем рендер если SDK не загрузился — пусть useApi покажет ошибку
+  // Telegram theme integration
+  useEffect(() => {
+    const themeParams = tg?.themeParams
+    if (themeParams) {
+      const root = document.documentElement
+      if (themeParams.bg_color) root.style.setProperty('--tg-bg', themeParams.bg_color)
+      if (themeParams.text_color) root.style.setProperty('--tg-text', themeParams.text_color)
+      if (themeParams.hint_color) root.style.setProperty('--tg-hint', themeParams.hint_color)
+      if (themeParams.button_color) root.style.setProperty('--tg-button', themeParams.button_color)
+      if (themeParams.button_text_color) root.style.setProperty('--tg-button-text', themeParams.button_text_color)
+      if (themeParams.secondary_bg_color) root.style.setProperty('--tg-secondary-bg', themeParams.secondary_bg_color)
+    }
+  }, [tg])
 
+  // Load profile
   useEffect(() => {
     loadProfile()
-
-    // Слушаем событие переключения вкладки
-    const handleSwitchTab = (e: CustomEvent) => {
-      setActiveTab(e.detail)
-    }
-    window.addEventListener('switch-tab', handleSwitchTab as EventListener)
-    return () => window.removeEventListener('switch-tab', handleSwitchTab as EventListener)
   }, [])
 
   const loadProfile = async () => {
     const data = await getProfile()
     if (data) {
       setProfile(data)
-      setHasUsedTrial(data.has_used_trial)
+      // If user has active subscription or completed trial, skip to dashboard
+      if (data.subscription.active || data.has_used_trial) {
+        if (step === 'welcome' || step === 'install' || step === 'preparing') {
+          setStep('dashboard')
+        }
+      }
     }
   }
 
-  const handleActivateTrial = async () => {
+  const handleStartOnboarding = useCallback(() => {
+    goNext() // welcome -> install
+  }, [goNext])
+
+  const handleInstalled = useCallback(() => {
+    goNext() // install -> preparing
+  }, [goNext])
+
+  const handlePreparingComplete = useCallback(async () => {
+    // Activate trial on backend
     const result = await activateTrial()
     if (result) {
       await loadProfile()
-      setHasUsedTrial(true)
+      goNext() // preparing -> connect
     }
-  }
+  }, [activateTrial, goNext])
 
+  const handleConnect = useCallback(() => {
+    goNext() // connect -> waiting
+  }, [goNext])
+
+  const handleActivated = useCallback(() => {
+    goNext() // waiting -> success
+  }, [goNext])
+
+  const handleSuccessComplete = useCallback(() => {
+    setStep('dashboard')
+  }, [setStep])
+
+  const handleBuySubscription = useCallback(() => {
+    setActiveTab('tariffs')
+  }, [])
+
+  const handlePaymentSuccess = useCallback(() => {
+    loadProfile()
+  }, [])
+
+  // Loading state
   if (loading && !profile) {
     return (
       <div className="loading-screen">
@@ -53,127 +107,106 @@ export default function App() {
     )
   }
 
-  // Если профиль не загружен и нет ошибки — новый пользователь, показываем экран триала
-  if (!profile && !error && !loading) {
-    return (
-      <div className="app">
-        <main className="app-content">
-          <VpnScreen
-            hasActiveSubscription={false}
-            hasUsedTrial={false}
-            connectionUrl={null}
-            onActivateTrial={handleActivateTrial}
-            trialExpiresAt={null}
-          />
-        </main>
-      </div>
-    )
-  }
-
+  // Error state
   if (error && !profile) {
     return (
       <div className="error-screen">
         <div className="error-icon">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2">
             <circle cx="12" cy="12" r="10" />
             <path d="M12 8V12M12 16H12.01" strokeLinecap="round" />
           </svg>
         </div>
         <div className="error-text">{error}</div>
-        <button
-          className="error-button"
-          onClick={() => {
-            // Если ошибка "Откройте через Telegram" — перезагружаем страницу
-            // Иначе пробуем загрузить профиль снова
-            if (error.includes('Telegram')) {
-              window.location.reload()
-            } else {
-              loadProfile()
-            }
-          }}
-        >
+        <button className="error-button" onClick={() => loadProfile()}>
           Повторить
         </button>
       </div>
     )
   }
 
+  // Onboarding flow
+  const isOnboarding = step !== 'dashboard'
+
   return (
-    <div className="app">
+    <div className={`app ${isOnboarding ? 'app-onboarding' : ''}`}>
       <main className="app-content">
-        {activeTab === 'vpn' && (
-          <VpnScreen
-            hasActiveSubscription={profile?.subscription.active ?? false}
-            hasUsedTrial={hasUsedTrial}
-            connectionUrl={profile?.subscription.connection_url ?? null}
-            onActivateTrial={handleActivateTrial}
-            trialExpiresAt={profile?.subscription.expires_at ?? null}
-          />
-        )}
-
-        {activeTab === 'tariffs' && (
-          <TariffsScreen balance={profile?.balance ?? 0} />
-        )}
-
-        {activeTab === 'balance' && (
-          <BalanceScreen balance={profile?.balance ?? 0} />
-        )}
-
-        {activeTab === 'profile' && (
-          <ProfileScreen
-            user={user}
-            subscriptionExpiresAt={profile?.subscription.expires_at ?? null}
-            referralCode={profile?.referral_code}
-          />
-        )}
+        <AnimatePresence mode="wait">
+          {isOnboarding ? (
+            <>
+              {step === 'welcome' && (
+                <WelcomeScreen key="welcome" onStart={handleStartOnboarding} />
+              )}
+              {step === 'install' && (
+                <InstallScreen key="install" onInstalled={handleInstalled} />
+              )}
+              {step === 'preparing' && (
+                <PreparingScreen
+                  key="preparing"
+                  onComplete={handlePreparingComplete}
+                  onBack={goBack}
+                />
+              )}
+              {step === 'connect' && (
+                <ConnectScreen
+                  key="connect"
+                  connectionUrl={profile?.subscription.connection_url || ''}
+                  onConnect={handleConnect}
+                />
+              )}
+              {step === 'waiting' && (
+                <WaitingScreen
+                  key="waiting"
+                  connectionUrl={profile?.subscription.connection_url || ''}
+                  onActivated={handleActivated}
+                />
+              )}
+              {step === 'success' && (
+                <SuccessScreen key="success" onComplete={handleSuccessComplete} />
+              )}
+            </>
+          ) : (
+            <>
+              {activeTab === 'dashboard' && (
+                <DashboardScreen
+                  key="dashboard"
+                  trialExpiresAt={profile?.subscription.expires_at ?? null}
+                  onBuySubscription={handleBuySubscription}
+                />
+              )}
+              {activeTab === 'tariffs' && (
+                <TariffsScreen key="tariffs" balance={profile?.balance ?? 0} />
+              )}
+              {activeTab === 'balance' && (
+                <BalanceScreen
+                  key="balance"
+                  balance={profile?.balance ?? 0}
+                  onBalanceUpdate={handlePaymentSuccess}
+                />
+              )}
+              {activeTab === 'profile' && (
+                <ProfileScreen
+                  key="profile"
+                  user={user}
+                  subscriptionExpiresAt={profile?.subscription.expires_at ?? null}
+                  referralCode={profile?.referral_code}
+                />
+              )}
+            </>
+          )}
+        </AnimatePresence>
       </main>
 
-      <nav className="tab-bar">
-        <button
-          className={`tab-button ${activeTab === 'vpn' ? 'tab-button-active' : ''}`}
-          onClick={() => setActiveTab('vpn')}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 2L2 7L12 12L22 7L12 2Z" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M2 17L12 22L22 17" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M2 12L12 17L22 12" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span>VPN</span>
-        </button>
+      {!isOnboarding && (
+        <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+      )}
 
-        <button
-          className={`tab-button ${activeTab === 'tariffs' ? 'tab-button-active' : ''}`}
-          onClick={() => setActiveTab('tariffs')}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 2V22M17 5H9.5C8.57174 5 7.6815 5.36875 7.02513 6.02513C6.36875 6.6815 6 7.57174 6 8.5C6 9.42826 6.36875 10.3185 7.02513 10.9749C7.6815 11.6313 8.57174 12 9.5 12H14.5C15.4283 12 16.3185 12.3687 16.9749 13.0251C17.6313 13.6815 18 14.5717 18 15.5C18 16.4283 17.6313 17.3185 16.9749 17.9749C16.3185 18.6313 15.4283 19 14.5 19H6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span>Тарифы</span>
-        </button>
-
-        <button
-          className={`tab-button ${activeTab === 'balance' ? 'tab-button-active' : ''}`}
-          onClick={() => setActiveTab('balance')}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <rect x="2" y="6" width="20" height="12" rx="2" />
-            <circle cx="12" cy="12" r="2" />
-            <path d="M6 12H6.01M18 12H18.01" strokeLinecap="round" />
-          </svg>
-          <span>Баланс</span>
-        </button>
-
-        <button
-          className={`tab-button ${activeTab === 'profile' ? 'tab-button-active' : ''}`}
-          onClick={() => setActiveTab('profile')}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M20 21V19C20 16.7909 18.2091 15 16 15H8C5.79086 15 4 16.7909 4 19V21" strokeLinecap="round" strokeLinejoin="round" />
-            <circle cx="12" cy="7" r="4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span>Профиль</span>
-        </button>
-      </nav>
+      <TopUpBottomSheet
+        isOpen={showTopUp}
+        onClose={() => setShowTopUp(false)}
+        requiredAmount={requiredAmount}
+        onPaymentSuccess={handlePaymentSuccess}
+      />
     </div>
   )
 }

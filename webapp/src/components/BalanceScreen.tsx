@@ -1,81 +1,154 @@
-import { useState } from 'react'
-import { useApi } from '../hooks/useApi'
+import { useState, useEffect } from 'react'
+import { motion } from 'framer-motion'
 import { useTelegram } from '../hooks/useTelegram'
+import { useApi } from '../hooks/useApi'
 
 interface BalanceScreenProps {
   balance: number
   onBalanceUpdate?: () => void
 }
 
-export function BalanceScreen({ balance }: BalanceScreenProps) {
-  const { getInitData } = useTelegram()
-  const { createPayment, loading, error } = useApi(getInitData)
+export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) {
+  const { tg, getInitData } = useTelegram()
+  const { createPayment } = useApi(getInitData)
   const [amount, setAmount] = useState('')
-  const [paymentUrl, setPaymentUrl] = useState<string | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'success'>('idle')
 
   const quickAmounts = [100, 300, 500, 1000]
 
+  useEffect(() => {
+    if (paymentStatus !== 'pending') return
+
+    const pollPaymentStatus = async () => {
+      try {
+        const response = await fetch('/api/payment/status', {
+          headers: {
+            'Authorization': `Bearer ${getInitData()}`,
+          },
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          if (data.status === 'succeeded') {
+            setPaymentStatus('success')
+            tg?.HapticFeedback?.notificationOccurred('success')
+            setTimeout(() => {
+              setPaymentStatus('idle')
+              setAmount('')
+              onBalanceUpdate?.()
+            }, 2000)
+          }
+        }
+      } catch {
+        // Ignore errors
+      }
+    }
+
+    const interval = setInterval(pollPaymentStatus, 2000)
+    const timeout = setTimeout(() => {
+      clearInterval(interval)
+    }, 120000)
+
+    return () => {
+      clearInterval(interval)
+      clearTimeout(timeout)
+    }
+  }, [paymentStatus, getInitData, tg, onBalanceUpdate])
+
   const handleQuickAmount = (value: number) => {
+    tg?.HapticFeedback?.impactOccurred('light')
     setAmount(value.toString())
   }
 
   const handleTopUp = async () => {
     const amountValue = parseInt(amount)
     if (!amountValue || amountValue < 10) {
-      alert('Минимальная сумма пополнения: 10 рублей')
+      tg?.HapticFeedback?.notificationOccurred('error')
       return
     }
 
-    const amountKopecks = amountValue * 100
+    tg?.HapticFeedback?.impactOccurred('light')
+    setIsProcessing(true)
 
+    const amountKopecks = amountValue * 100
     const paymentData = await createPayment(amountKopecks)
 
     if (paymentData && paymentData.payment_url) {
-      setPaymentUrl(paymentData.payment_url)
-      // Открываем платежную ссылку в новой вкладке
+      setPaymentStatus('pending')
       window.open(paymentData.payment_url, '_blank')
+    } else {
+      setIsProcessing(false)
+      tg?.HapticFeedback?.notificationOccurred('error')
     }
   }
 
-  const handleCancel = () => {
-    setPaymentUrl(null)
-    setAmount('')
-  }
-
   return (
-    <div className="balance-screen">
-      <h2 className="screen-title">Баланс</h2>
-
-      <div className="balance-card">
+    <motion.div
+      className="balance-screen"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4 }}
+    >
+      <motion.div
+        className="balance-card"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+      >
         <div className="balance-label">Текущий баланс</div>
         <div className="balance-amount">
-          <span className="balance-value">{(balance / 100).toFixed(2)}</span>
+          <motion.span
+            className="balance-value"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.6, delay: 0.3 }}
+          >
+            {(balance / 100).toFixed(2)}
+          </motion.span>
           <span className="balance-currency">₽</span>
         </div>
-      </div>
 
-      {paymentUrl && (
-        <div className="payment-pending">
-          <div className="payment-pending-icon">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 6V12L16 14" strokeLinecap="round" />
+        {paymentStatus === 'pending' && (
+          <motion.div
+            className="balance-pending"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <div className="pending-spinner" />
+            <span>Ожидание подтверждения оплаты...</span>
+          </motion.div>
+        )}
+
+        {paymentStatus === 'success' && (
+          <motion.div
+            className="balance-success"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.3 }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+              <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-          </div>
-          <div className="payment-pending-text">
-            <div className="payment-pending-title">Ожидается оплата</div>
-            <div className="payment-pending-subtitle">
-              Платёж открыт в новой вкладке. После оплаты баланс обновится автоматически.
-            </div>
-          </div>
-          <button className="payment-cancel-button" onClick={handleCancel}>
-            Отмена
-          </button>
-        </div>
-      )}
+            <span>Баланс пополнен!</span>
+          </motion.div>
+        )}
+      </motion.div>
 
-      <div className="topup-section">
-        <h3 className="topup-title">Пополнить через СБП</h3>
+      <motion.div
+        className="topup-section"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.2 }}
+      >
+        <h3 className="topup-title">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <rect x="2" y="5" width="20" height="14" rx="2" />
+            <path d="M2 10H22" />
+          </svg>
+          Пополнить через СБП
+        </h3>
 
         <div className="topup-input-wrapper">
           <input
@@ -86,41 +159,50 @@ export function BalanceScreen({ balance }: BalanceScreenProps) {
             onChange={(e) => setAmount(e.target.value)}
             min="10"
             step="10"
-            disabled={loading || !!paymentUrl}
+            disabled={isProcessing || paymentStatus !== 'idle'}
           />
           <span className="topup-input-suffix">₽</span>
         </div>
 
         <div className="topup-quick-amounts">
           {quickAmounts.map((value) => (
-            <button
+            <motion.button
               key={value}
               className={`topup-quick-button ${amount === value.toString() ? 'topup-quick-button-active' : ''}`}
               onClick={() => handleQuickAmount(value)}
-              disabled={loading || !!paymentUrl}
+              disabled={isProcessing || paymentStatus !== 'idle'}
+              whileTap={{ scale: 0.96 }}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
             >
               {value} ₽
-            </button>
+            </motion.button>
           ))}
         </div>
 
-        {error && <div className="topup-error">{error}</div>}
-
-        <button
+        <motion.button
           className="topup-button"
           onClick={handleTopUp}
-          disabled={!amount || parseInt(amount) < 10 || loading || !!paymentUrl}
+          disabled={!amount || parseInt(amount) < 10 || isProcessing || paymentStatus !== 'idle'}
+          whileTap={{ scale: 0.96 }}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.3 }}
         >
-          {loading ? 'Создание платежа...' : 'Пополнить'}
-        </button>
-      </div>
+          {isProcessing ? 'Создание платежа...' : 'Пополнить'}
+        </motion.button>
+      </motion.div>
 
-      <div className="balance-info">
+      <motion.div
+        className="balance-info"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.4 }}
+      >
         <div className="balance-info-item">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M12 2L2 7L12 12L22 7L12 2Z" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M2 17L12 22L22 17" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M2 12L12 17L22 12" strokeLinecap="round" strokeLinejoin="round" />
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+            <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <div>
             <div className="balance-info-title">Мгновенное зачисление</div>
@@ -128,7 +210,7 @@ export function BalanceScreen({ balance }: BalanceScreenProps) {
           </div>
         </div>
         <div className="balance-info-item">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
             <path d="M12 22S8 18 8 12V6L12 2L16 6V12C16 18 12 22 12 22Z" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <div>
@@ -136,7 +218,7 @@ export function BalanceScreen({ balance }: BalanceScreenProps) {
             <div className="balance-info-subtitle">Через систему быстрых платежей</div>
           </div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }

@@ -244,6 +244,36 @@ export function useApi(getInitData: () => string) {
     }
   }, [headers, cancelRequest])
 
+  const checkPaymentStatus = useCallback(async (paymentId: string): Promise<{ status: string } | null> => {
+    cancelRequest()
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
+    const timeoutId = setTimeout(() => {
+      controller.abort()
+    }, REQUEST_TIMEOUT)
+
+    try {
+      const response = await fetch(`${API_BASE}/payment/status/${paymentId}`, {
+        method: 'GET',
+        headers: headers(),
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        return null
+      }
+
+      return await response.json()
+    } catch {
+      return null
+    } finally {
+      abortControllerRef.current = null
+    }
+  }, [headers, cancelRequest])
+
   return {
     loading,
     error,
@@ -251,6 +281,7 @@ export function useApi(getInitData: () => string) {
     activateTrial,
     createPayment,
     purchaseSubscription,
+    checkPaymentStatus,
     cancelRequest,
   }
 }

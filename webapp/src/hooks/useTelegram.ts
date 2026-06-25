@@ -78,7 +78,7 @@ export function useTelegram() {
   const getInitData = () => window.Telegram?.WebApp?.initData || ''
 
   // Определяем платформу для deep links
-  const platform = (() => {
+  const platform: 'ios' | 'android' | 'desktop' = (() => {
     const ua = navigator.userAgent.toLowerCase()
     if (/iphone|ipad|ipod/.test(ua)) return 'ios'
     if (/android/.test(ua)) return 'android'

@@ -131,20 +131,20 @@ export function ProfileScreen({ user, subscriptionExpiresAt, referralCode }: Pro
       <div className="profile-section">
         <h3 className="profile-section-title">Информация</h3>
         <div className="profile-links">
-          <a href="/pricing" className="profile-link">
+          <a href="/pricing" className="profile-link" onClick={(e) => handleDocClick(e, '/pricing')}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="12" y1="1" x2="12" y2="23" />
               <path d="M17 5H9.5A3.5 3.5 0 0 0 9.5 12H14.5A3.5 3.5 0 0 1 14.5 19H5" />
             </svg>
             <span>Тарифы и цены</span>
           </a>
-          <a href="/privacy" className="profile-link">
+          <a href="/privacy" className="profile-link" onClick={(e) => handleDocClick(e, '/privacy')}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 22S8 18 8 12V6L12 2L16 6V12C16 18 12 22 12 22Z" />
             </svg>
             <span>Политика конфиденциальности</span>
           </a>
-          <a href="/terms" className="profile-link">
+          <a href="/terms" className="profile-link" onClick={(e) => handleDocClick(e, '/terms')}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M14 2H6A2 2 0 0 0 4 4V20A2 2 0 0 0 6 20H18A2 2 0 0 0 20 18V8L14 2Z" />
               <polyline points="14 2 14 8 20 8" />

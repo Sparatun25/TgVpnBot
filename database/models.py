@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, Boolean, ForeignKey, Text, func
+from sqlalchemy import DateTime, Integer, BigInteger, String, Boolean, ForeignKey, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -18,7 +18,7 @@ class User(Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    tg_id: Mapped[int] = mapped_column(Integer, unique=True, index=True, nullable=False)
+    tg_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True, nullable=False)
     username: Mapped[str | None] = mapped_column(String(255), nullable=True)
     balance: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

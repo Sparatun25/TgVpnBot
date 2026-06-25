@@ -52,33 +52,27 @@ export function VpnScreen({
       return
     }
 
-    if (platform === 'ios') {
-      // iOS: открываем Amnezia через custom URL scheme
-      // Ключ уже в буфере — Amnezia подхватит при импорте
-      window.location.href = 'amneziavpn://import'
+    if (platform === 'ios' || platform === 'android') {
+      // Ключ уже в буфере. Пробуем открыть Amnezia через vpn:// URL
+      // Используем iframe-трюк для обхода ограничений WebView
+      const iframe = document.createElement('iframe')
+      iframe.style.display = 'none'
+      iframe.src = connectionUrl
+      document.body.appendChild(iframe)
+
+      // Также пробуем window.open как fallback
+      setTimeout(() => {
+        window.open(connectionUrl, '_blank')
+      }, 100)
 
       // Если через 2 секунды страница всё ещё видна — приложение не установлено
       setTimeout(() => {
+        document.body.removeChild(iframe)
         if (!document.hidden) {
           setAppNotInstalled(true)
         } else {
           setIsConnected(true)
-          setToastMessage('Подключаемся к Amnezia...')
-          setShowToast(true)
-        }
-        setIsConnecting(false)
-      }, 2000)
-    } else if (platform === 'android') {
-      // Android: используем intent URL для открытия приложения
-      const intentUrl = `intent://import#Intent;scheme=amneziavpn;package=org.amnezia.vpn;end`
-      window.location.href = intentUrl
-
-      setTimeout(() => {
-        if (!document.hidden) {
-          setAppNotInstalled(true)
-        } else {
-          setIsConnected(true)
-          setToastMessage('Подключаемся к Amnezia...')
+          setToastMessage('Открываем Amnezia...')
           setShowToast(true)
         }
         setIsConnecting(false)

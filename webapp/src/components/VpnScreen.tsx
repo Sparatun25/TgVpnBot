@@ -7,6 +7,7 @@ interface VpnScreenProps {
   connectionUrl: string | null
   onActivateTrial: () => Promise<void>
   trialExpiresAt: string | null
+  platform?: 'ios' | 'android' | 'desktop'
 }
 
 export function VpnScreen({
@@ -15,12 +16,14 @@ export function VpnScreen({
   connectionUrl,
   onActivateTrial,
   trialExpiresAt,
+  platform = 'desktop',
 }: VpnScreenProps) {
   const [showToast, setShowToast] = useState(false)
   const [toastMessage, setToastMessage] = useState('')
   const [isConnecting, setIsConnecting] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
   const [showInstructions, setShowInstructions] = useState(false)
+  const [appNotInstalled, setAppNotInstalled] = useState(false)
 
   const handleActivateTrial = async () => {
     await onActivateTrial()
@@ -29,7 +32,6 @@ export function VpnScreen({
 
   const handleConnect = async () => {
     if (!connectionUrl) {
-      // Шаг 1 не выполнен (Amnezia не скачана) — трясём первый пункт
       const step1 = document.querySelector('.stepper-step')
       if (step1) {
         step1.classList.add('stepper-step-shake')
@@ -38,22 +40,65 @@ export function VpnScreen({
       return
     }
 
+    setIsConnecting(true)
+
+    // Копируем ключ в буфер обмена
     try {
       await navigator.clipboard.writeText(connectionUrl)
-      setIsConnecting(true)
+    } catch {
+      setToastMessage('Не удалось скопировать ключ')
+      setShowToast(true)
+      setIsConnecting(false)
+      return
+    }
 
-      // Даём время на копирование, потом открываем Amnezia
+    if (platform === 'ios') {
+      // iOS: открываем Amnezia через custom URL scheme
+      // Ключ уже в буфере — Amnezia подхватит при импорте
+      window.location.href = 'amneziavpn://import'
+
+      // Если через 2 секунды страница всё ещё видна — приложение не установлено
+      setTimeout(() => {
+        if (!document.hidden) {
+          setAppNotInstalled(true)
+        } else {
+          setIsConnected(true)
+          setToastMessage('Подключаемся к Amnezia...')
+          setShowToast(true)
+        }
+        setIsConnecting(false)
+      }, 2000)
+    } else if (platform === 'android') {
+      // Android: используем intent URL для открытия приложения
+      const intentUrl = `intent://import#Intent;scheme=amneziavpn;package=org.amnezia.vpn;end`
+      window.location.href = intentUrl
+
+      setTimeout(() => {
+        if (!document.hidden) {
+          setAppNotInstalled(true)
+        } else {
+          setIsConnected(true)
+          setToastMessage('Подключаемся к Amnezia...')
+          setShowToast(true)
+        }
+        setIsConnecting(false)
+      }, 2000)
+    } else {
+      // Desktop: показываем инструкцию с копированием
       setTimeout(() => {
         setIsConnecting(false)
         setIsConnected(true)
-        // Пытаемся открыть Amnezia — она подхватит ключ из буфера
-        window.location.href = 'amnezia://import'
-        setToastMessage('Ключ скопирован! Открываем Amnezia...')
+        setToastMessage('Ключ скопирован! Вставьте его в Amnezia на компьютере')
         setShowToast(true)
-      }, 800)
-    } catch {
-      setToastMessage('Ошибка копирования — скопируйте ключ вручную')
-      setShowToast(true)
+      }, 500)
+    }
+  }
+
+  const handleInstallApp = () => {
+    if (platform === 'ios') {
+      window.open('https://apps.apple.com/app/amnezia-vpn', '_blank')
+    } else if (platform === 'android') {
+      window.open('https://play.google.com/store/apps/details?id=org.amnezia.vpn', '_blank')
     }
   }
 
@@ -167,7 +212,7 @@ export function VpnScreen({
               Скопируйте конфигурацию и откройте Amnezia
             </p>
 
-            {!isConnected ? (
+            {!isConnected && !appNotInstalled ? (
               <button
                 className={`connect-button ${isConnecting ? 'connect-button-loading' : ''}`}
                 onClick={handleConnect}
@@ -187,6 +232,30 @@ export function VpnScreen({
                   </>
                 )}
               </button>
+            ) : appNotInstalled ? (
+              <div className="app-not-installed">
+                <div className="app-not-installed-icon">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 8V12M12 16H12.01" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <div className="app-not-installed-text">
+                  <div className="app-not-installed-title">Amnezia VPN не установлена</div>
+                  <div className="app-not-installed-subtitle">
+                    Установите приложение, чтобы подключиться к VPN
+                  </div>
+                </div>
+                <button className="app-not-installed-button" onClick={handleInstallApp}>
+                  Установить Amnezia VPN
+                </button>
+                <button className="app-not-installed-retry" onClick={() => {
+                  setAppNotInstalled(false)
+                  handleConnect()
+                }}>
+                  Попробовать снова
+                </button>
+              </div>
             ) : (
               <div className="vpn-status vpn-status-active">
                 <div className="vpn-status-icon">
@@ -199,11 +268,15 @@ export function VpnScreen({
                 <div className="vpn-status-text">
                   <div className="vpn-status-title">VPN Готов к работе</div>
                   <div className="vpn-status-subtitle">
-                    Откройте Amnezia → нажмите «Добавить сервер» → «Вставить из буфера»
+                    {platform === 'desktop'
+                      ? 'Откройте Amnezia → нажмите «Добавить сервер» → «Вставить из буфера»'
+                      : 'Ключ импортирован в Amnezia'}
                   </div>
-                  <button className="vpn-status-copy" onClick={handleCopyKeyAgain}>
-                    Скопировать ключ снова
-                  </button>
+                  {platform === 'desktop' && (
+                    <button className="vpn-status-copy" onClick={handleCopyKeyAgain}>
+                      Скопировать ключ снова
+                    </button>
+                  )}
                 </div>
               </div>
             )}

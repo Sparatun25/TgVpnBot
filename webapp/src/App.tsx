@@ -9,7 +9,7 @@ import { ProfileScreen } from './components/ProfileScreen'
 type Tab = 'vpn' | 'tariffs' | 'balance' | 'profile'
 
 export default function App() {
-  const { user, getInitData } = useTelegram()
+  const { user, getInitData, platform } = useTelegram()
   const { loading, error, getProfile, activateTrial } = useApi(getInitData)
   const [activeTab, setActiveTab] = useState<Tab>('vpn')
   const [profile, setProfile] = useState<ProfileData | null>(null)
@@ -64,6 +64,7 @@ export default function App() {
             connectionUrl={null}
             onActivateTrial={handleActivateTrial}
             trialExpiresAt={null}
+            platform={platform}
           />
         </main>
       </div>
@@ -108,6 +109,7 @@ export default function App() {
             connectionUrl={profile?.subscription.connection_url ?? null}
             onActivateTrial={handleActivateTrial}
             trialExpiresAt={profile?.subscription.expires_at ?? null}
+            platform={platform}
           />
         )}
 

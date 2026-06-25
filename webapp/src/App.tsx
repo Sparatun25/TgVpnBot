@@ -64,7 +64,6 @@ export default function App() {
             connectionUrl={null}
             onActivateTrial={handleActivateTrial}
             trialExpiresAt={null}
-            platform={platform}
           />
         </main>
       </div>
@@ -109,7 +108,6 @@ export default function App() {
             connectionUrl={profile?.subscription.connection_url ?? null}
             onActivateTrial={handleActivateTrial}
             trialExpiresAt={profile?.subscription.expires_at ?? null}
-            platform={platform}
           />
         )}
 

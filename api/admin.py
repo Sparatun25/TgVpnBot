@@ -480,3 +480,52 @@ async def topup_user_balance(
         amount_rubles=body.amount_rubles,
         message=f"Начислено {body.amount_rubles} ₽",
     )
+
+
+# ─────────────────────────────────────────────────────────
+# Debug endpoint для тестирования vpn:// ключей
+# ─────────────────────────────────────────────────────────
+
+@router.get("/debug/vpn-key")
+async def debug_vpn_key(
+    admin_tg_id: Annotated[int, Depends(require_admin)],
+) -> dict:
+    """
+    Генерирует тестовый vpn:// ключ и возвращает его структуру для отладки.
+
+    Показывает:
+    - Полный vpn:// URL
+    - Декодированный JSON payload
+    - Структуру last_config
+    """
+    import base64
+    import json
+    import zlib
+
+    try:
+        # Генерируем тестовый ключ
+        vpn_url, client_pub_key = await create_client_key(user_id=999999, is_trial=True)
+
+        # Декодируем для проверки
+        encoded_part = vpn_url.replace("vpn://", "")
+        decoded_bytes = base64.b64decode(encoded_part)
+        compressed_data = decoded_bytes[4:]  # Пропускаем magic bytes
+        json_bytes = zlib.decompress(compressed_data)
+        payload = json.loads(json_bytes.decode("utf-8"))
+
+        return {
+            "success": True,
+            "vpn_url": vpn_url,
+            "client_pub_key": client_pub_key,
+            "decoded_payload": payload,
+            "last_config": json.loads(payload["containers"][0]["awg"]["last_config"]),
+            "container_field": payload["containers"][0]["container"],
+            "default_container": payload["defaultContainer"],
+        }
+    except Exception as e:
+        logger.exception("Ошибка генерации debug ключа: %s", e)
+        return {
+            "success": False,
+            "error": str(e),
+            "error_type": type(e).__name__,
+        }

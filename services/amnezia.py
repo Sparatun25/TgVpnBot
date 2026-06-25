@@ -248,7 +248,7 @@ def _build_vpn_key(
         "hostName": settings.amnezia_server_host,
         "mtu": "1376",
         "persistent_keep_alive": "25",
-        "port": int(server_params.get("ListenPort", "45019")),
+        "port": server_params.get("ListenPort", "45019"),
         "psk_key": psk,
         "server_pub_key": server_pubkey,
     }
@@ -268,25 +268,25 @@ def _build_vpn_key(
                     "S2": server_params.get("S2", ""),
                     "S3": server_params.get("S3", ""),
                     "S4": server_params.get("S4", ""),
-                    "last_config": json.dumps(last_config, indent=4),
+                    "last_config": json.dumps(last_config),
                     "port": server_params.get("ListenPort", "45019"),
                     "protocol_version": "2",
                     "subnet_address": "10.8.1.0",
                     "transport_proto": "udp",
                 },
-                "container": settings.amnezia_container_name,
+                "container": "awg",
             }
         ],
-        "defaultContainer": settings.amnezia_container_name,
+        "defaultContainer": "awg",
         "description": "OnyxVpn",
         "dns1": "1.1.1.1",
         "dns2": "1.0.0.1",
         "hostName": settings.amnezia_server_host,
     }
 
-    json_bytes = json.dumps(payload, indent=4).encode("utf-8")
+    json_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
     compressed = zlib.compress(json_bytes)
-    encoded = base64.urlsafe_b64encode(VPN_MAGIC + compressed).decode("ascii")
+    encoded = base64.b64encode(VPN_MAGIC + compressed).decode("ascii")
     return f"vpn://{encoded}"
 
 

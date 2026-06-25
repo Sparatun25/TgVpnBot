@@ -431,6 +431,41 @@ async def revoke_subscription(
     )
 
 
+@router.delete("/subscriptions/clear-all")
+async def clear_all_subscriptions(
+    admin_tg_id: Annotated[int, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> dict:
+    """
+    Очистить все подписки из таблицы.
+
+    Удаляет все записи из таблицы subscriptions.
+    """
+    from sqlalchemy import delete
+
+    # Получаем количество подписок перед удалением
+    count_query = select(func.count(Subscription.id))
+    count_result = await session.execute(count_query)
+    total_count = count_result.scalar_one()
+
+    # Удаляем все подписки
+    delete_query = delete(Subscription)
+    await session.execute(delete_query)
+    await session.commit()
+
+    logger.info(
+        "Админ tg_id=%s очистил таблицу подписок (удалено %d записей)",
+        admin_tg_id,
+        total_count,
+    )
+
+    return {
+        "success": True,
+        "message": f"Удалено {total_count} подписок",
+        "deleted_count": total_count,
+    }
+
+
 # ─────────────────────────────────────────────────────────
 # Начисление баланса
 # ─────────────────────────────────────────────────────────

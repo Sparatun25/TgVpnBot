@@ -507,93 +507,108 @@ body {
 }
 
 .tariffs-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-  margin-bottom: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
 }
 
 .tariff-card {
   background: var(--onyx-dark);
   border: 1px solid var(--onyx-gray);
-  border-radius: 20px;
-  padding: 24px;
+  border-radius: 16px;
+  padding: 16px;
   position: relative;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
 .tariff-card:hover {
   border-color: var(--onyx-light);
-  transform: translateY(-4px);
 }
 
 .tariff-card-popular {
   border-color: var(--onyx-accent);
-  background: linear-gradient(135deg, rgba(201, 169, 110, 0.1), rgba(201, 169, 110, 0.05));
+  background: linear-gradient(135deg, rgba(201, 169, 110, 0.08), rgba(201, 169, 110, 0.03));
 }
 
 .tariff-badge {
   position: absolute;
-  top: -12px;
-  right: 24px;
+  top: -10px;
+  right: 16px;
   background: var(--onyx-accent);
   color: var(--onyx-black);
-  padding: 6px 16px;
-  border-radius: 20px;
-  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 11px;
   font-weight: 600;
+}
+
+.tariff-info {
+  flex: 1;
+  min-width: 0;
 }
 
 .tariff-header {
-  margin-bottom: 16px;
-}
-
-.tariff-name {
-  font-size: 20px;
-  font-weight: 600;
   margin-bottom: 4px;
 }
 
+.tariff-name {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
 .tariff-period {
-  font-size: 14px;
+  font-size: 13px;
   color: var(--onyx-text-muted);
 }
 
 .tariff-price {
-  margin-bottom: 20px;
   display: flex;
   align-items: baseline;
-  gap: 4px;
+  gap: 2px;
+  margin-top: 4px;
 }
 
 .tariff-price-value {
-  font-size: 40px;
+  font-size: 24px;
   font-weight: 700;
   color: var(--onyx-accent);
 }
 
 .tariff-price-currency {
-  font-size: 24px;
+  font-size: 16px;
   color: var(--onyx-accent);
 }
 
-.tariff-features {
-  list-style: none;
-  margin-bottom: 24px;
-}
-
-.tariff-feature {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 0;
-  font-size: 14px;
-  color: var(--onyx-text-muted);
-}
-
-.tariff-feature svg {
+.tariff-action {
   flex-shrink: 0;
-  color: var(--onyx-success);
+}
+
+.tariff-button {
+  padding: 10px 20px;
+  background: var(--onyx-accent);
+  color: var(--onyx-black);
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.tariff-button:hover:not(:disabled) {
+  background: var(--onyx-accent-hover);
+}
+
+.tariff-button-disabled {
+  background: var(--onyx-gray);
+  color: var(--onyx-text-muted);
+  cursor: not-allowed;
 }
 
 .tariff-button {
@@ -1150,6 +1165,133 @@ body {
   background: rgba(239, 68, 68, 0.2);
   border-color: var(--onyx-error);
   color: var(--onyx-error);
+}
+
+/* VPN Toast Notifications */
+.vpn-toast {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 16px 20px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  z-index: 9999;
+  animation: slideDown 0.3s ease-out;
+  max-width: 90%;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.vpn-toast-success {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+}
+
+.vpn-toast-error {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: white;
+}
+
+.vpn-toast-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.vpn-toast-subtitle {
+  font-size: 12px;
+  opacity: 0.9;
+  margin-top: 2px;
+}
+
+/* Manual Import Section */
+.manual-import-section {
+  margin-top: 16px;
+}
+
+.manual-import-toggle {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--onyx-dark);
+  border: 1px solid var(--onyx-gray);
+  border-radius: 10px;
+  color: var(--onyx-text-muted);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.manual-import-toggle:hover {
+  background: var(--onyx-gray);
+  color: var(--onyx-text);
+}
+
+.manual-import-guide {
+  margin-top: 12px;
+  padding: 16px;
+  background: var(--onyx-dark);
+  border: 1px solid var(--onyx-gray);
+  border-radius: 10px;
+}
+
+.manual-import-step {
+  font-size: 13px;
+  color: var(--onyx-text-muted);
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+
+.manual-import-step:last-child {
+  margin-bottom: 0;
+}
+
+.manual-import-step strong {
+  color: var(--onyx-text);
+  font-weight: 600;
+}
+
+.manual-copy-button {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--onyx-accent);
+  border: none;
+  border-radius: 10px;
+  color: var(--onyx-black);
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin: 8px 0;
+}
+
+.manual-copy-button:hover {
+  background: var(--onyx-accent-hover);
+  transform: translateY(-1px);
+}
+
+.manual-copy-button:active {
+  transform: translateY(0);
 }
 
 /* Responsive */

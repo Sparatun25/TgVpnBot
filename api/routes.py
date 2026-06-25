@@ -65,6 +65,30 @@ async def verify_yookassa_ip(request: Request) -> None:
 
 router = APIRouter(prefix="/api", tags=["mini-app"])
 
+# Тарифы: id -> {price_kopecks, days, name}
+TARIFFS = {
+    "monthly": {"price_kopecks": 24900, "days": 30, "name": "Месяц"},
+    "quarter": {"price_kopecks": 65000, "days": 90, "name": "3 месяца"},
+    "year": {"price_kopecks": 115000, "days": 365, "name": "Год"},
+}
+
+
+@router.get("/tariffs")
+async def get_tariffs() -> dict:
+    """Список доступных тарифов."""
+    return {
+        "tariffs": [
+            {
+                "id": tid,
+                "name": t["name"],
+                "price_kopecks": t["price_kopecks"],
+                "price_rubles": t["price_kopecks"] / 100,
+                "days": t["days"],
+            }
+            for tid, t in TARIFFS.items()
+        ]
+    }
+
 
 @router.get("/profile")
 async def get_profile(
@@ -196,6 +220,137 @@ async def activate_trial(
         "message": "Триал активирован",
         "expires_at": expires_at.isoformat(),
         "connection_url": connection_url,
+    }
+
+
+@router.post("/subscription/purchase")
+async def purchase_subscription(
+    payload: dict,
+    tg_id: int = Depends(get_current_user_tg_id),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Купить подписку за баланс.
+
+    Ожидает:
+    - tariff_id: id тарифа (monthly, quarter, year)
+
+    Логика:
+    1. Проверяет наличие тарифа
+    2. Проверяет баланс пользователя
+    3. Если есть активная подписка — продлевает её
+    4. Если нет — создаёт новую
+    5. Списывает деньги с баланса
+    """
+    tariff_id = payload.get("tariff_id")
+
+    if not tariff_id or tariff_id not in TARIFFS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Некорректный тариф",
+        )
+
+    tariff = TARIFFS[tariff_id]
+    price = tariff["price_kopecks"]
+    days = tariff["days"]
+
+    # Ищем пользователя
+    query = select(User).where(User.tg_id == tg_id)
+    result = await session.execute(query)
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не найден",
+        )
+
+    # Проверяем баланс
+    if user.balance < price:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Недостаточно средств. Нужно {price / 100:.2f} ₽, на балансе {user.balance / 100:.2f} ₽",
+        )
+
+    now = datetime.now(timezone.utc)
+
+    # Проверяем активную подписку
+    active_query = select(Subscription).where(
+        Subscription.user_id == user.id,
+        Subscription.is_active == True,
+        Subscription.expires_at > now,
+    )
+    active_result = await session.execute(active_query)
+    active_sub = active_result.scalar_one_or_none()
+
+    if active_sub:
+        # Продлеваем существующую подписку
+        # Если подписка заканчивается в будущем — добавляем дни к текущей дате окончания
+        # Если уже закончилась — добавляем дни к сейчас
+        base_date = max(active_sub.expires_at, now)
+        new_expires = base_date + timedelta(days=days)
+        active_sub.expires_at = new_expires
+        active_sub.plan_type = tariff_id
+
+        # Генерируем новый ключ (старый может быть скомпрометирован)
+        try:
+            connection_url, client_pub_key = await create_client_key(user.id, is_trial=False)
+            active_sub.uuid = client_pub_key
+            active_sub.connection_url = connection_url
+        except RuntimeError as e:
+            logger.error("Ошибка создания ключа Amnezia: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Не удалось создать VPN-ключ",
+            ) from e
+
+        subscription = active_sub
+        action = "продлена"
+    else:
+        # Создаём новую подписку
+        # Генерируем ключ Amnezia
+        try:
+            connection_url, client_pub_key = await create_client_key(user.id, is_trial=False)
+        except RuntimeError as e:
+            logger.error("Ошибка создания ключа Amnezia: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Не удалось создать VPN-ключ",
+            ) from e
+
+        expires_at = now + timedelta(days=days)
+        subscription = Subscription(
+            user_id=user.id,
+            uuid=client_pub_key,
+            plan_type=tariff_id,
+            expires_at=expires_at,
+            is_active=True,
+            connection_url=connection_url,
+        )
+        session.add(subscription)
+        action = "активирована"
+
+    # Списываем деньги
+    user.balance -= price
+
+    await session.commit()
+
+    logger.info(
+        "Подписка %s для user_tg_id=%s: тариф=%s, цена=%d коп, баланс: %d → %d коп",
+        action,
+        tg_id,
+        tariff_id,
+        price,
+        user.balance + price,
+        user.balance,
+    )
+
+    return {
+        "message": f"Подписка {action} до {subscription.expires_at.strftime('%d.%m.%Y')}",
+        "expires_at": subscription.expires_at.isoformat(),
+        "connection_url": subscription.connection_url,
+        "plan_type": subscription.plan_type,
+        "balance_remaining": user.balance,
     }
 
 

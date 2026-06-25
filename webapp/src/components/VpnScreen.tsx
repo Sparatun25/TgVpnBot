@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 
 interface VpnScreenProps {
   hasActiveSubscription: boolean
@@ -16,11 +16,39 @@ export function VpnScreen({
   trialExpiresAt,
 }: VpnScreenProps) {
   const [showInstructions, setShowInstructions] = useState(false)
+  const [toast, setToast] = useState<{ visible: boolean; copied: boolean }>({
+    visible: false,
+    copied: false,
+  })
+  const [showManualGuide, setShowManualGuide] = useState(false)
 
   const handleActivateTrial = async () => {
     await onActivateTrial()
     setShowInstructions(true)
   }
+
+  const copyKeyToClipboard = useCallback(async () => {
+    if (!connectionUrl) return false
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(connectionUrl)
+      } else {
+        const textArea = document.createElement('textarea')
+        textArea.value = connectionUrl
+        textArea.style.position = 'fixed'
+        textArea.style.opacity = '0'
+        textArea.style.left = '-9999px'
+        document.body.appendChild(textArea)
+        textArea.focus()
+        textArea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textArea)
+      }
+      return true
+    } catch {
+      return false
+    }
+  }, [connectionUrl])
 
   const handleConnect = async () => {
     if (!connectionUrl) {
@@ -32,32 +60,27 @@ export function VpnScreen({
       return
     }
 
-    try {
-      // Действие 1: Копирование ключа в буфер обмена
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(connectionUrl)
-      } else {
-        // Резервный метод для старых WebView
-        const textArea = document.createElement('textarea')
-        textArea.value = connectionUrl
-        textArea.style.position = 'fixed'
-        textArea.style.opacity = '0'
-        document.body.appendChild(textArea)
-        textArea.focus()
-        textArea.select()
-        document.execCommand('copy')
-        document.body.removeChild(textArea)
-      }
+    const copied = await copyKeyToClipboard()
 
-      console.log('Ключ скопирован в буфер')
-
-      // Действие 2: Открытие AmneziaVPN через диплинк
-      window.location.href = connectionUrl
-    } catch (err) {
-      console.error('Ошибка копирования/открытия:', err)
-      // Fallback: пытаемся открыть напрямую
-      window.open(connectionUrl, '_self')
+    if (copied) {
+      setToast({ visible: true, copied: true })
+      // Ждём 1.5с, чтобы пользователь увидел тост, затем открываем Amnezia
+      setTimeout(() => {
+        window.location.href = connectionUrl
+      }, 1500)
+      // Скрываем тост через 5с
+      setTimeout(() => setToast({ visible: false, copied: true }), 5000)
+    } else {
+      setToast({ visible: true, copied: false })
+      setTimeout(() => setToast({ visible: false, copied: false }), 5000)
     }
+  }
+
+  const handleCopyOnly = async () => {
+    if (!connectionUrl) return
+    const copied = await copyKeyToClipboard()
+    setToast({ visible: true, copied })
+    setTimeout(() => setToast({ visible: false, copied }), 4000)
   }
 
   // Экран предложения триала (новый пользователь, ни разу не активировал)
@@ -100,7 +123,6 @@ export function VpnScreen({
             Бесплатный период завершился. Оформите подписку, чтобы продолжить пользоваться OnyxVpn.
           </p>
           <button className="trial-expired-button" onClick={() => {
-            // Переключаем на вкладку тарифов через кастомное событие
             window.dispatchEvent(new CustomEvent('switch-tab', { detail: 'tariffs' }))
           }}>
             Выбрать тариф
@@ -113,6 +135,34 @@ export function VpnScreen({
   // Экран инструкций после активации
   return (
     <div className={`vpn-screen ${showInstructions ? 'vpn-screen-active' : ''}`}>
+      {/* Toast-уведомление */}
+      {toast.visible && (
+        <div className={`vpn-toast ${toast.copied ? 'vpn-toast-success' : 'vpn-toast-error'}`}>
+          {toast.copied ? (
+            <>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <div>
+                <div className="vpn-toast-title">Ключ скопирован</div>
+                <div className="vpn-toast-subtitle">Открываем Amnezia VPN...</div>
+              </div>
+            </>
+          ) : (
+            <>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 8V12M12 16H12.01" strokeLinecap="round" />
+              </svg>
+              <div>
+                <div className="vpn-toast-title">Не удалось скопировать</div>
+                <div className="vpn-toast-subtitle">Скопируйте ключ вручную ниже</div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="stepper">
         {/* Шаг 1: Скачать Amnezia */}
         <div className="stepper-step">
@@ -124,7 +174,7 @@ export function VpnScreen({
             </p>
             <div className="store-buttons">
               <a
-                href="https://apps.apple.com/app/amnezia-vpn"
+                href="https://apps.apple.com/app/defaultvpn/id6744725017"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="store-button"
@@ -155,7 +205,7 @@ export function VpnScreen({
           <div className="stepper-content">
             <h3 className="stepper-title">Подключите OnyxVpn</h3>
             <p className="stepper-description">
-              Нажмите кнопку — ключ скопируется, Amnezia откроется автоматически
+              Нажмите кнопку — ключ скопируется в буфер обмена, затем Amnezia откроется автоматически
             </p>
 
             <button className="connect-button" onClick={handleConnect}>
@@ -164,6 +214,44 @@ export function VpnScreen({
               </svg>
               Подключить OnyxVpn
             </button>
+
+            {/* Ручной импорт */}
+            <div className="manual-import-section">
+              <button
+                className="manual-import-toggle"
+                onClick={() => setShowManualGuide(!showManualGuide)}
+              >
+                <span>Не получилось автоматически?</span>
+                <svg
+                  width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" strokeWidth="2"
+                  style={{ transform: showManualGuide ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
+                >
+                  <path d="M6 9L12 15L18 9" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+
+              {showManualGuide && (
+                <div className="manual-import-guide">
+                  <p className="manual-import-step">
+                    <strong>1.</strong> Скопируйте ключ:
+                  </p>
+                  <button className="manual-copy-button" onClick={handleCopyOnly}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" />
+                      <path d="M5 15H4C2.9 15 2 14.1 2 13V4C2 2.9 2.9 2 4 2H13C14.1 2 15 2.9 15 4V5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    Скопировать ключ
+                  </button>
+                  <p className="manual-import-step">
+                    <strong>2.</strong> Откройте Amnezia VPN
+                  </p>
+                  <p className="manual-import-step">
+                    <strong>3.</strong> Нажмите <strong>«+»</strong> → <strong>«Вставить конфигурацию»</strong> → <strong>«Готово»</strong>
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

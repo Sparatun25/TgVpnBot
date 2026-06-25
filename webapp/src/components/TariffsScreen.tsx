@@ -1,3 +1,7 @@
+import { useState } from 'react'
+import { useApi } from '../hooks/useApi'
+import { useTelegram } from '../hooks/useTelegram'
+
 interface Tariff {
   id: string
   name: string
@@ -37,13 +41,29 @@ interface TariffsScreenProps {
 }
 
 export function TariffsScreen({ balance }: TariffsScreenProps) {
-  const handleBuy = (tariff: Tariff) => {
+  const { getInitData } = useTelegram()
+  const { purchaseSubscription, loading } = useApi(getInitData)
+  const [purchasing, setPurchasing] = useState<string | null>(null)
+
+  const handleBuy = async (tariff: Tariff) => {
     if (balance < tariff.price * 100) {
       alert('Недостаточно средств на балансе. Пополните через СБП.')
       return
     }
-    // TODO: Логика покупки
-    console.log('Покупка тарифа:', tariff)
+
+    if (!confirm(`Купить подписку "${tariff.name}" за ${tariff.price} ₽?`)) {
+      return
+    }
+
+    setPurchasing(tariff.id)
+    const result = await purchaseSubscription(tariff.id)
+    setPurchasing(null)
+
+    if (result) {
+      alert(`Подписка активирована до ${new Date(result.expires_at).toLocaleDateString('ru-RU')}`)
+      // Перезагружаем страницу, чтобы обновить профиль
+      window.location.reload()
+    }
   }
 
   return (
@@ -52,45 +72,42 @@ export function TariffsScreen({ balance }: TariffsScreenProps) {
       <p className="screen-subtitle">Выберите подходящий план</p>
 
       <div className="tariffs-grid">
-        {tariffs.map((tariff) => (
-          <div
-            key={tariff.id}
-            className={`tariff-card ${tariff.popular ? 'tariff-card-popular' : ''}`}
-          >
-            {tariff.popular && (
-              <div className="tariff-badge">Популярный</div>
-            )}
+        {tariffs.map((tariff) => {
+          const canAfford = balance >= tariff.price * 100
+          const isPurchasing = purchasing === tariff.id
 
-            <div className="tariff-header">
-              <h3 className="tariff-name">{tariff.name}</h3>
-              <div className="tariff-period">{tariff.period}</div>
-            </div>
-
-            <div className="tariff-price">
-              <span className="tariff-price-value">{tariff.price}</span>
-              <span className="tariff-price-currency">₽</span>
-            </div>
-
-            <ul className="tariff-features">
-              {tariff.features.map((feature, index) => (
-                <li key={index} className="tariff-feature">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  <span>{feature}</span>
-                </li>
-              ))}
-            </ul>
-
-            <button
-              className={`tariff-button ${balance < tariff.price * 100 ? 'tariff-button-disabled' : ''}`}
-              onClick={() => handleBuy(tariff)}
-              disabled={balance < tariff.price * 100}
+          return (
+            <div
+              key={tariff.id}
+              className={`tariff-card ${tariff.popular ? 'tariff-card-popular' : ''}`}
             >
-              {balance < tariff.price * 100 ? 'Недостаточно средств' : 'Купить'}
-            </button>
-          </div>
-        ))}
+              {tariff.popular && (
+                <div className="tariff-badge">Популярный</div>
+              )}
+
+              <div className="tariff-info">
+                <div className="tariff-header">
+                  <h3 className="tariff-name">{tariff.name}</h3>
+                  <div className="tariff-period">{tariff.period}</div>
+                </div>
+                <div className="tariff-price">
+                  <span className="tariff-price-value">{tariff.price}</span>
+                  <span className="tariff-price-currency">₽</span>
+                </div>
+              </div>
+
+              <div className="tariff-action">
+                <button
+                  className={`tariff-button ${!canAfford ? 'tariff-button-disabled' : ''}`}
+                  onClick={() => handleBuy(tariff)}
+                  disabled={!canAfford || isPurchasing}
+                >
+                  {isPurchasing ? '...' : !canAfford ? 'Нет средств' : 'Купить'}
+                </button>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       <div className="tariffs-info">

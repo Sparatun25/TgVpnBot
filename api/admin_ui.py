@@ -538,6 +538,28 @@ async def admin_ui(request: Request):
             }
         }
 
+        // Очистка всех подписок
+        async function handleClearAll() {
+            if (!confirm('ВНИМАНИЕ! Вы уверены, что хотите удалить ВСЕ подписки? Это действие необратимо!')) return;
+            if (!confirm('Точно удалить все подписки? Последнее предупреждение!')) return;
+            try {
+                const res = await fetch('/api/admin/subscriptions/clear-all', {
+                    method: 'DELETE',
+                    headers: getHeaders(),
+                });
+                if (!res.ok) {
+                    const err = await res.json();
+                    throw new Error(err.detail || 'Не удалось очистить подписки');
+                }
+                const data = await res.json();
+                alert(data.message);
+                await loadSubscriptions();
+                await loadMetrics();
+            } catch (err) {
+                alert(err.message);
+            }
+        }
+
         // Выход
         function handleLogout() {
             sessionStorage.removeItem('admin_tg_id');
@@ -638,14 +660,17 @@ async def admin_ui(request: Request):
                     <div class="section">
                         <div class="section-header">
                             <h2 class="section-title">Подписки</h2>
-                            <div class="filters">
-                                <input type="text" class="filter-input" placeholder="Поиск по tg_id" value="${state.searchTgId}" oninput="updateSearch(this.value)">
-                                <select class="filter-select" value="${state.statusFilter}" onchange="updateFilter(this.value)">
-                                    <option value="">Все</option>
-                                    <option value="active">Активные</option>
-                                    <option value="expired">Истёкшие</option>
-                                    <option value="trial">Триалы</option>
-                                </select>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <div class="filters">
+                                    <input type="text" class="filter-input" placeholder="Поиск по tg_id" value="${state.searchTgId}" oninput="updateSearch(this.value)">
+                                    <select class="filter-select" value="${state.statusFilter}" onchange="updateFilter(this.value)">
+                                        <option value="">Все</option>
+                                        <option value="active">Активные</option>
+                                        <option value="expired">Истёкшие</option>
+                                        <option value="trial">Триалы</option>
+                                    </select>
+                                </div>
+                                <button class="btn btn-danger" style="margin-left:8px;" onclick="handleClearAll()">🗑️ Очистить все</button>
                             </div>
                         </div>
                         ${subscriptionsHtml}

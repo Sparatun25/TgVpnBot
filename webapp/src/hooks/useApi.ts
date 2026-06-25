@@ -202,12 +202,55 @@ export function useApi(getInitData: () => string) {
     }
   }, [headers, cancelRequest])
 
+  const purchaseSubscription = useCallback(async (tariffId: string): Promise<TrialResponse | null> => {
+    cancelRequest()
+    const controller = new AbortController()
+    abortControllerRef.current = controller
+
+    setLoading(true)
+    setError(null)
+
+    const timeoutId = setTimeout(() => {
+      controller.abort()
+    }, REQUEST_TIMEOUT)
+
+    try {
+      const response = await fetch(`${API_BASE}/subscription/purchase`, {
+        method: 'POST',
+        headers: headers(),
+        signal: controller.signal,
+        body: JSON.stringify({ tariff_id: tariffId }),
+      })
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.detail || 'Не удалось купить подписку')
+      }
+
+      return await response.json()
+    } catch (err) {
+      clearTimeout(timeoutId)
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('Превышено время ожидания. Попробуйте снова.')
+      } else {
+        setError(err instanceof Error ? err.message : 'Ошибка сети')
+      }
+      return null
+    } finally {
+      setLoading(false)
+      abortControllerRef.current = null
+    }
+  }, [headers, cancelRequest])
+
   return {
     loading,
     error,
     getProfile,
     activateTrial,
     createPayment,
+    purchaseSubscription,
     cancelRequest,
   }
 }

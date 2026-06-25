@@ -28,6 +28,31 @@ export default function App() {
   const [showTopUp, setShowTopUp] = useState(false)
   const [requiredAmount] = useState(0)
 
+  // Deep link routing: parse URL params from bot notifications
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const screen = params.get('screen')
+    const plan = params.get('plan')
+    const stepParam = params.get('step')
+
+    // Handle screen parameter (e.g., screen=tariffs)
+    if (screen === 'tariffs') {
+      setActiveTab('tariffs')
+      setStep('dashboard') // Ensure we're in dashboard mode, not onboarding
+    }
+
+    // Handle step parameter (e.g., step=connect)
+    if (stepParam === 'connect') {
+      setStep('connect')
+    }
+
+    // Clean up URL params after processing
+    if (screen || plan || stepParam) {
+      const newUrl = window.location.pathname
+      window.history.replaceState({}, '', newUrl)
+    }
+  }, [setStep])
+
   // Telegram theme integration
   useEffect(() => {
     const themeParams = tg?.themeParams

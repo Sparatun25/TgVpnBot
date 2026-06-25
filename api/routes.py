@@ -214,6 +214,10 @@ async def activate_trial(
         connection_url=connection_url,
     )
     session.add(subscription)
+
+    # Устанавливаем время создания ключа для отслеживания неактивных
+    user.key_created_at = now
+
     await session.commit()
 
     return {

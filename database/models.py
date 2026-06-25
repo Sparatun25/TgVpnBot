@@ -33,6 +33,13 @@ class User(Base):
     notified_24h: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     notified_1h: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
+    # Отслеживание неактивных ключей
+    key_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    notified_inactive_15m: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    notified_inactive_3h: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    notified_inactive_24h: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
     # Relationships
     subscriptions: Mapped[list["Subscription"]] = relationship(
         "Subscription", back_populates="user", cascade="all, delete-orphan"

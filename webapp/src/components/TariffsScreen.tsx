@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { useTelegram } from '../hooks/useTelegram'
 import { useApi } from '../hooks/useApi'
@@ -52,6 +52,24 @@ export function TariffsScreen({ balance }: TariffsScreenProps) {
   const [purchasing, setPurchasing] = useState<string | null>(null)
   const [showTopUp, setShowTopUp] = useState(false)
   const [requiredAmount, setRequiredAmount] = useState(0)
+
+  // Handle deep link from bot (e.g., ?plan=year)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const plan = params.get('plan')
+
+    if (plan) {
+      const tariff = tariffs.find(t => t.id === plan)
+      if (tariff) {
+        // Auto-trigger purchase for this tariff
+        handleBuy(tariff)
+      }
+
+      // Clean up URL param
+      const newUrl = window.location.pathname
+      window.history.replaceState({}, '', newUrl)
+    }
+  }, [])
 
   const handleBuy = async (tariff: Tariff) => {
     tg?.HapticFeedback?.impactOccurred('light')

@@ -1,0 +1,8 @@
+{
+  "registry-mirrors": [
+    "https://dockerhub.timeweb.cloud",
+    "https://dh-mirror.gitverse.ru",
+    "https://dockerhub1.beget.com",
+    "https://huecker.io"
+  ]
+}

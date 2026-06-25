@@ -4,11 +4,13 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.markdown import hbold, hitalic
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from core.config import settings
 from core.db import async_session_factory
 from database.models import Subscription, User
 from services.amnezia import check_expired_subscriptions
@@ -62,10 +64,29 @@ async def send_trial_24h_notification(bot: Bot) -> None:
                     f"🔐 OnyxVpn — свобода без ограничений"
                 )
 
+                # Inline кнопки для быстрого продления
+                keyboard = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="🚀 Продлить на год за 124₽/мес",
+                                web_app={"url": f"{settings.webapp_url}?screen=tariffs&plan=year"},
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                text="📅 Продлить на месяц",
+                                web_app={"url": f"{settings.webapp_url}?screen=tariffs&plan=monthly"},
+                            )
+                        ],
+                    ]
+                )
+
                 await bot.send_message(
                     chat_id=user.tg_id,
                     text=message_text,
                     parse_mode="HTML",
+                    reply_markup=keyboard,
                 )
 
                 # Отмечаем, что уведомление отправлено
@@ -131,10 +152,29 @@ async def send_trial_1h_notification(bot: Bot) -> None:
                     f"✨ OnyxVpn — ваш надёжный VPN"
                 )
 
+                # Inline кнопки для быстрого продления
+                keyboard = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="🚀 Продлить на год за 124₽/мес",
+                                web_app={"url": f"{settings.webapp_url}?screen=tariffs&plan=year"},
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                text="📅 Продлить на месяц",
+                                web_app={"url": f"{settings.webapp_url}?screen=tariffs&plan=monthly"},
+                            )
+                        ],
+                    ]
+                )
+
                 await bot.send_message(
                     chat_id=user.tg_id,
                     text=message_text,
                     parse_mode="HTML",
+                    reply_markup=keyboard,
                 )
 
                 # Отмечаем, что уведомление отправлено
@@ -198,14 +238,196 @@ async def cleanup_expired_subscriptions(bot: Bot) -> None:
             logger.error("Ошибка очистки истёкших подписок: %s", e)
 
 
+async def send_inactive_key_notifications(bot: Bot) -> None:
+    """
+    Отправить уведомления пользователям с неактивными ключами.
+
+    Триггеры:
+    - 15 минут после создания ключа: "Твой ключ зарезервирован и ждёт подключения"
+    - 3 часа после создания ключа: "Почти готово! Мы заметили, что вы создали ключ, но еще не подключились"
+    - 24 часа после создания ключа: "Последний шанс активировать 3 дня бесплатного премиум-доступа"
+    """
+    now = datetime.now(timezone.utc)
+
+    async with async_session_factory() as session:
+        # Триггер 1: 15 минут
+        time_15m_ago = now - timedelta(minutes=15)
+        time_14m_ago = now - timedelta(minutes=14)
+
+        query_15m = (
+            select(User)
+            .join(Subscription)
+            .where(
+                Subscription.is_active == True,
+                Subscription.plan_type == "trial",
+                User.key_created_at >= time_14m_ago,
+                User.key_created_at <= time_15m_ago,
+                User.notified_inactive_15m == False,
+                User.notified_inactive_3h == False,
+                User.notified_inactive_24h == False,
+            )
+        )
+
+        result_15m = await session.execute(query_15m)
+        users_15m = result_15m.scalars().all()
+
+        for user in users_15m:
+            try:
+                message_text = (
+                    f"{hbold('🔑 Твой персональный ключ Onyx VPN зарезервирован')}\n\n"
+                    f"Ключ ждёт подключения. Нужна помощь?\n\n"
+                    f"✨ OnyxVpn — свобода без ограничений"
+                )
+
+                keyboard = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="📘 Пошаговая инструкция",
+                                web_app={"url": f"{settings.webapp_url}?step=connect"},
+                            )
+                        ]
+                    ]
+                )
+
+                await bot.send_message(
+                    chat_id=user.tg_id,
+                    text=message_text,
+                    parse_mode="HTML",
+                    reply_markup=keyboard,
+                )
+
+                user.notified_inactive_15m = True
+                await session.commit()
+
+                logger.info("Отправлено уведомление 15 мин: user_id=%s", user.tg_id)
+
+            except Exception as e:
+                logger.error("Ошибка отправки уведомления 15 мин пользователю %s: %s", user.tg_id, e)
+                continue
+
+        # Триггер 2: 3 часа
+        time_3h_ago = now - timedelta(hours=3)
+        time_2h59m_ago = now - timedelta(hours=2, minutes=59)
+
+        query_3h = (
+            select(User)
+            .join(Subscription)
+            .where(
+                Subscription.is_active == True,
+                Subscription.plan_type == "trial",
+                User.key_created_at >= time_3h_ago,
+                User.key_created_at <= time_2h59m_ago,
+                User.notified_inactive_3h == False,
+                User.notified_inactive_24h == False,
+            )
+        )
+
+        result_3h = await session.execute(query_3h)
+        users_3h = result_3h.scalars().all()
+
+        for user in users_3h:
+            try:
+                message_text = (
+                    f"{hbold('⚡️ Почти готово!')}\n\n"
+                    f"Мы заметили, что вы создали ключ, но еще не подключились.\n\n"
+                    f"Без VPN ваши данные в публичных Wi-Fi сетях уязвимы.\n"
+                    f"Защитите себя в 1 клик.\n\n"
+                    f"✨ OnyxVpn — ваш надёжный VPN"
+                )
+
+                keyboard = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="⚡️ Подключить Onyx VPN",
+                                web_app={"url": settings.webapp_url},
+                            )
+                        ]
+                    ]
+                )
+
+                await bot.send_message(
+                    chat_id=user.tg_id,
+                    text=message_text,
+                    parse_mode="HTML",
+                    reply_markup=keyboard,
+                )
+
+                user.notified_inactive_3h = True
+                await session.commit()
+
+                logger.info("Отправлено уведомление 3 часа: user_id=%s", user.tg_id)
+
+            except Exception as e:
+                logger.error("Ошибка отправки уведомления 3 часа пользователю %s: %s", user.tg_id, e)
+                continue
+
+        # Триггер 3: 24 часа
+        time_24h_ago = now - timedelta(hours=24)
+        time_23h59m_ago = now - timedelta(hours=23, minutes=59)
+
+        query_24h = (
+            select(User)
+            .join(Subscription)
+            .where(
+                Subscription.is_active == True,
+                Subscription.plan_type == "trial",
+                User.key_created_at >= time_24h_ago,
+                User.key_created_at <= time_23h59m_ago,
+                User.notified_inactive_24h == False,
+            )
+        )
+
+        result_24h = await session.execute(query_24h)
+        users_24h = result_24h.scalars().all()
+
+        for user in users_24h:
+            try:
+                message_text = (
+                    f"{hbold('🎁 Последний шанс!')}\n\n"
+                    f"Активируйте 3 дня бесплатного премиум-доступа.\n\n"
+                    f"Завтра бронь ключа аннулируется.\n\n"
+                    f"✨ OnyxVpn — свобода без ограничений"
+                )
+
+                keyboard = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(
+                                text="🎁 Активировать бесплатно",
+                                web_app={"url": f"{settings.webapp_url}?step=connect"},
+                            )
+                        ]
+                    ]
+                )
+
+                await bot.send_message(
+                    chat_id=user.tg_id,
+                    text=message_text,
+                    parse_mode="HTML",
+                    reply_markup=keyboard,
+                )
+
+                user.notified_inactive_24h = True
+                await session.commit()
+
+                logger.info("Отправлено уведомление 24 часа: user_id=%s", user.tg_id)
+
+            except Exception as e:
+                logger.error("Ошибка отправки уведомления 24 часа пользователю %s: %s", user.tg_id, e)
+                continue
+
+
 async def start_notification_scheduler(bot: Bot) -> AsyncIOScheduler:
     """
     Запустить планировщик уведомлений.
 
-    Создаёт и запускает APScheduler с тремя задачами:
+    Создаёт и запускает APScheduler с задачами:
     1. Проверка уведомлений за 24 часа (каждую минуту)
     2. Проверка уведомлений за 1 час (каждую минуту)
     3. Очистка истёкших подписок (каждую минуту)
+    4. Уведомления о неактивных ключах (каждую минуту)
 
     Returns:
         Запущенный планировщик.
@@ -242,6 +464,17 @@ async def start_notification_scheduler(bot: Bot) -> AsyncIOScheduler:
         args=[bot],
         id="cleanup_expired",
         name="Cleanup expired subscriptions",
+        replace_existing=True,
+    )
+
+    # Задача 4: Уведомления о неактивных ключах
+    scheduler.add_job(
+        send_inactive_key_notifications,
+        trigger="interval",
+        minutes=1,
+        args=[bot],
+        id="inactive_key_notifications",
+        name="Inactive key notifications",
         replace_existing=True,
     )
 

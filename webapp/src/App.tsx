@@ -26,7 +26,7 @@ export default function App() {
   const [profile, setProfile] = useState<ProfileData | null>(null)
   const [activeTab, setActiveTab] = useState<MainTab>('dashboard')
   const [showTopUp, setShowTopUp] = useState(false)
-  const [requiredAmount, setRequiredAmount] = useState(0)
+  const [requiredAmount] = useState(0)
 
   // Telegram theme integration
   useEffect(() => {

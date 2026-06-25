@@ -10,11 +10,11 @@ interface DashboardScreenProps {
 export function DashboardScreen({ trialExpiresAt, onBuySubscription }: DashboardScreenProps) {
   const { tg } = useTelegram()
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0 })
-  const [trafficUsed, setTrafficUsed] = useState(12.4)
-  const [todayTraffic, setTodayTraffic] = useState(1.1)
-  const [protectionTime, setProtectionTime] = useState(52)
-  const [maxSpeed, setMaxSpeed] = useState(85)
-  const [connections, setConnections] = useState(3)
+  const trafficUsed = 12.4
+  const todayTraffic = 1.1
+  const protectionTime = 52
+  const maxSpeed = 85
+  const connections = 3
 
   useEffect(() => {
     if (!trialExpiresAt) return

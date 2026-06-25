@@ -6,7 +6,7 @@ interface InstallScreenProps {
 }
 
 export function InstallScreen({ onInstalled }: InstallScreenProps) {
-  const { tg, platform } = useTelegram()
+  const { tg } = useTelegram()
 
   const handleInstalled = () => {
     tg?.HapticFeedback?.impactOccurred('light')

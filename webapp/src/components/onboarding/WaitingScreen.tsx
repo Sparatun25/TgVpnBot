@@ -7,7 +7,7 @@ interface WaitingScreenProps {
   onActivated: () => void
 }
 
-export function WaitingScreen({ connectionUrl, onActivated }: WaitingScreenProps) {
+export function WaitingScreen({ onActivated }: WaitingScreenProps) {
   const { tg } = useTelegram()
   const [elapsed, setElapsed] = useState(0)
   const [showHelp, setShowHelp] = useState(false)

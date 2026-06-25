@@ -42,7 +42,7 @@ interface TariffsScreenProps {
 
 export function TariffsScreen({ balance }: TariffsScreenProps) {
   const { getInitData } = useTelegram()
-  const { purchaseSubscription, loading } = useApi(getInitData)
+  const { purchaseSubscription } = useApi(getInitData)
   const [purchasing, setPurchasing] = useState<string | null>(null)
 
   const handleBuy = async (tariff: Tariff) => {

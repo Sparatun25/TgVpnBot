@@ -23,4 +23,4 @@ cryptography==43.0.1
 # Observability
 structlog==26.1.0
 prometheus-client==0.25.0
-prometheus-fastapi-instrumentator==8.0.2
+prometheus-fastapi-instrumentator==7.0.0

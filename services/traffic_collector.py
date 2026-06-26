@@ -33,6 +33,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from database.models import Subscription, User
 from services.amnezia import _exec_in_container
@@ -213,9 +214,12 @@ async def collect_traffic_stats(session: AsyncSession) -> dict:
     # Достаём из БД все активные подписки, у которых uuid встречается
     # в wg show (т.е. peer с этим ключом сейчас существует в Amnezia).
     # Один запрос вместо N: загружаем всех активных пользователей сразу.
+    # selectinload(Subscription.user) нужен, чтобы User грузился сразу в том же
+    # await — иначе доступ к sub.user ниже попытается лениво догрузить связь
+    # синхронно и упадёт с MissingGreenlet в async-контексте.
     subs_q = (
         select(Subscription)
-        .join(User)
+        .options(selectinload(Subscription.user))
         .where(Subscription.is_active == True)
     )
     result = await session.execute(subs_q)

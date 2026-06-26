@@ -56,6 +56,9 @@ RUN useradd -m -u 1000 -s /bin/bash appuser && \
 # и потом переключится
 USER root
 
-EXPOSE 8000
+# 8000 — FastAPI /metrics (uvicorn multiproc aggregated)
+# 9100 — бот /metrics (отдельный процесс, in-memory REGISTRY)
+# Оба НЕ маппим наружу в docker-compose — Prometheus ходит через Docker network.
+EXPOSE 8000 9100
 
 ENTRYPOINT ["/docker-entrypoint.sh"]

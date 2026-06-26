@@ -1,5 +1,7 @@
 """Админ-панель: метрики и управление подписками."""
 
+import base64
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
@@ -7,15 +9,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api.auth import get_current_user_tg_id, security
 from core.config import settings
 from core.db import get_session
-from database.models import Payment, Subscription, User
-from services.amnezia import revoke_client_key
+from database.models import AdminSession, Payment, PaymentStatus, PlanType, Subscription, User
+from services.amnezia import create_client_key, revoke_client_key
 
 logger = logging.getLogger(__name__)
 
@@ -29,39 +31,68 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 async def require_admin(
     request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    session: AsyncSession = Depends(get_session),
 ) -> int:
     """
     Зависимость: пропускает только администраторов из bot_admin_ids.
 
-    Поддерживает два способа авторизации:
-    1. Telegram Mini App: Authorization: Bearer <initData> — валидация подписи
-    2. Браузер (Login Widget): X-Admin-Tg-Id: <tg_id> — проверка по списку админов
+    Поддерживает два способа авторизации (оба через Authorization: Bearer):
+
+    1. AdminSession-токен (создаётся /api/admin/login после Login Widget).
+       Случайный URL-safe токен с TTL. Ищется в таблице admin_sessions.
+       При истечении — сессия удаляется (lazy cleanup) и возвращается 401.
+       Каждый успешный запрос обновляет last_used_at.
+
+    2. initData от Telegram Mini App (для будущей интеграции админ-интерфейса
+       в Mini App). Валидируется по HMAC-SHA256 подписи с auth_date ≤ 5 мин.
+
+    Прежняя схема X-Admin-Tg-Id / числовой Bearer удалена: любой желающий мог
+    подставить произвольный tg_id из bot_admin_ids и получить полный доступ
+    к админке без аутентификации.
     """
-    tg_id = None
+    if not credentials or not credentials.credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Необходима авторизация",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    # Способ 1: initData от Mini App
-    if credentials and credentials.credentials:
-        token = credentials.credentials
-        # Если токен — число, это tg_id от Login Widget
-        if token.isdigit():
-            tg_id = int(token)
-        else:
-            # Иначе это initData — валидируем
-            try:
-                tg_id = await get_current_user_tg_id(request, credentials)
-            except HTTPException:
-                pass
+    token = credentials.credentials
+    tg_id: int | None = None
 
-    # Способ 2: header X-Admin-Tg-Id от Login Widget
-    if tg_id is None:
-        admin_tg_id_header = request.headers.get("X-Admin-Tg-Id")
-        if admin_tg_id_header and admin_tg_id_header.isdigit():
-            tg_id = int(admin_tg_id_header)
+    # Способ 1: AdminSession-токен из БД
+    session_q = select(AdminSession).where(AdminSession.token == token)
+    admin_session = (await session.execute(session_q)).scalar_one_or_none()
+
+    if admin_session is not None:
+        now = datetime.now(timezone.utc)
+        if admin_session.expires_at < now:
+            # Сессия протухла — удаляем лениво при первом запросе после истечения
+            await session.delete(admin_session)
+            await session.commit()
+            logger.info(
+                "Admin-сессия для tg_id=%s истекла и удалена",
+                admin_session.tg_id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Сессия истекла, войдите снова через Telegram",
+            )
+        tg_id = admin_session.tg_id
+        # Обновляем last_used_at — диагностика активности админов
+        admin_session.last_used_at = now
+        await session.commit()
+    else:
+        # Способ 2: initData от Telegram Mini App
+        try:
+            tg_id = await get_current_user_tg_id(request, credentials)
+        except HTTPException:
+            tg_id = None
 
     if tg_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Необходима авторизация",
+            detail="Неверный или просроченный токен",
         )
 
     if tg_id not in settings.bot_admin_ids:
@@ -149,6 +180,18 @@ class TopUpResponse(BaseModel):
     message: str
 
 
+class ClearAllRequest(BaseModel):
+    """Запрос на очистку всех подписок.
+
+    Требует ввод секретной фразы для защиты от случайного клика в UI
+    или выполнения деструктивного действия ботом/скриптом.
+    """
+
+    confirmation: str = Field(
+        description="Секретная фраза-подтверждение, чтобы исключить случайное удаление",
+    )
+
+
 # ─────────────────────────────────────────────────────────
 # Эндпоинты
 # ─────────────────────────────────────────────────────────
@@ -184,41 +227,53 @@ async def get_metrics(
     # Активные триалы
     active_trials_q = select(func.count(Subscription.id)).where(
         Subscription.is_active == True,
-        Subscription.plan_type == "trial",
+        Subscription.plan_type == PlanType.TRIAL,
         Subscription.expires_at > now,
     )
     active_trials = (await session.execute(active_trials_q)).scalar_one()
 
-    # Сумма успешных пополнений
+    # Сумма успешных пополнений.
+    # YooKassa в webhook присылает статус "succeeded" (см. api/routes.py webhook handler),
+    # поэтому фильтруем по этому значению. "success" использовался в ранней версии и сейчас
+    # не пишется в БД.
     total_deposits_q = select(func.coalesce(func.sum(Payment.amount), 0)).where(
-        Payment.status == "success",
+        Payment.status == PaymentStatus.SUCCEEDED,
     )
     total_deposits_kopecks = (await session.execute(total_deposits_q)).scalar_one()
 
-    # Топ-5 рефералов (по количеству приглашённых)
-    top_referrers_q = (
+    # Топ-5 рефералов (по количеству приглашённых).
+    # Один запрос с JOIN вместо N+1: считаем рефералов в подзапросе,
+    # затем джойним с User по tg_id, чтобы получить username без N+1.
+    ref_count_subq = (
         select(
-            User.referred_by_id,
+            User.referred_by_id.label("referred_by_id"),
             func.count(User.id).label("ref_count"),
         )
         .where(User.referred_by_id.isnot(None))
         .group_by(User.referred_by_id)
-        .order_by(func.count(User.id).desc())
+        .subquery()
+    )
+    top_referrers_q = (
+        select(
+            ref_count_subq.c.referred_by_id,
+            ref_count_subq.c.ref_count,
+            User.username,
+        )
+        .join(User, User.tg_id == ref_count_subq.c.referred_by_id)
+        .order_by(ref_count_subq.c.ref_count.desc())
         .limit(5)
     )
     top_result = await session.execute(top_referrers_q)
     top_rows = top_result.all()
 
-    # Обогащаем данными о пригласивших
-    top_referrers = []
-    for referred_by_id, ref_count in top_rows:
-        referrer_q = select(User).where(User.tg_id == referred_by_id)
-        referrer = (await session.execute(referrer_q)).scalar_one_or_none()
-        top_referrers.append({
+    top_referrers = [
+        {
             "tg_id": referred_by_id,
-            "username": referrer.username if referrer else None,
+            "username": username,
             "ref_count": ref_count,
-        })
+        }
+        for referred_by_id, ref_count, username in top_rows
+    ]
 
     return MetricsResponse(
         total_users=total_users,
@@ -273,8 +328,8 @@ async def list_subscriptions(
         base_query = base_query.where(Subscription.expires_at <= now)
         count_query = count_query.where(Subscription.expires_at <= now)
     elif status_filter == "trial":
-        base_query = base_query.where(Subscription.plan_type == "trial")
-        count_query = count_query.where(Subscription.plan_type == "trial")
+        base_query = base_query.where(Subscription.plan_type == PlanType.TRIAL)
+        count_query = count_query.where(Subscription.plan_type == PlanType.TRIAL)
 
     # Общее количество (до пагинации)
     total = (await session.execute(count_query)).scalar_one()
@@ -431,17 +486,33 @@ async def revoke_subscription(
     )
 
 
+# Секретная фраза для подтверждения очистки всех подписок.
+# Хранится в коде намеренно — это не пароль, а защита от случайного клика.
+# Админ видит её в админке UI и должен сознательно ввести.
+CLEAR_ALL_CONFIRMATION_PHRASE = "DELETE_ALL_SUBSCRIPTIONS"
+
+
 @router.delete("/subscriptions/clear-all")
 async def clear_all_subscriptions(
+    body: ClearAllRequest,
     admin_tg_id: Annotated[int, Depends(require_admin)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> dict:
     """
     Очистить все подписки из таблицы.
 
-    Удаляет все записи из таблицы subscriptions.
+    Деструктивная операция: требует ввод фразы-подтверждения
+    (CLEAR_ALL_CONFIRMATION_PHRASE) в теле запроса.
     """
-    from sqlalchemy import delete
+    if body.confirmation != CLEAR_ALL_CONFIRMATION_PHRASE:
+        logger.warning(
+            "Попытка clear-all с неверной фразой от админа tg_id=%s",
+            admin_tg_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Неверная фраза-подтверждение",
+        )
 
     # Получаем количество подписок перед удалением
     count_query = select(func.count(Subscription.id))
@@ -533,12 +604,11 @@ async def debug_vpn_key(
     - Декодированный JSON payload
     - Конфигурацию awg
     """
-    import base64
-    import json
-
     try:
         # Генерируем тестовый ключ
-        vpn_url, client_pub_key = await create_client_key(user_id=999999, is_trial=True)
+        vpn_url, client_pub_key = await create_client_key(
+            user_id=999999, is_trial=True, plan_type="trial",
+        )
 
         # Декодируем для проверки
         encoded_part = vpn_url.replace("vpn://", "")

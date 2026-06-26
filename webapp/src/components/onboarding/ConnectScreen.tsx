@@ -1,17 +1,39 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTelegram } from '../../hooks/useTelegram'
+import { useMainButton } from '../../hooks/useMainButton'
 
 interface ConnectScreenProps {
   connectionUrl: string
   onConnect: () => void
 }
 
+const LAUNCH_DEEP_LINK_DELAY_MS = 1000
+const LAUNCH_FAILED_CHECK_MS = 2000
+
 export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) {
   const { tg } = useTelegram()
   const [showFallback, setShowFallback] = useState(false)
   const [showLaunchFailed, setShowLaunchFailed] = useState(false)
-  const [manualKey, setManualKey] = useState(connectionUrl)
+
+  const deepLinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const launchCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isMountedRef = useRef(true)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      if (deepLinkTimerRef.current) {
+        clearTimeout(deepLinkTimerRef.current)
+        deepLinkTimerRef.current = null
+      }
+      if (launchCheckTimerRef.current) {
+        clearTimeout(launchCheckTimerRef.current)
+        launchCheckTimerRef.current = null
+      }
+    }
+  }, [])
 
   const handleConnect = async () => {
     tg?.HapticFeedback?.impactOccurred('light')
@@ -29,22 +51,27 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
     }
 
     // Пытаемся открыть Amnezia VPN через deep link
-    setTimeout(() => {
+    deepLinkTimerRef.current = setTimeout(() => {
+      deepLinkTimerRef.current = null
+      if (!isMountedRef.current) return
+
       try {
         window.location.href = connectionUrl
 
         // Если через 2 секунды пользователь всё ещё здесь — показываем карточку
-        setTimeout(() => {
+        launchCheckTimerRef.current = setTimeout(() => {
+          launchCheckTimerRef.current = null
+          if (!isMountedRef.current) return
           if (!document.hidden) {
             setShowLaunchFailed(true)
             tg?.HapticFeedback?.notificationOccurred('warning')
           }
-        }, 2000)
+        }, LAUNCH_FAILED_CHECK_MS)
       } catch {
         setShowLaunchFailed(true)
         setShowFallback(true)
       }
-    }, 1000)
+    }, LAUNCH_DEEP_LINK_DELAY_MS)
 
     onConnect()
   }
@@ -66,10 +93,10 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
   const handleManualCopy = async () => {
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(manualKey)
+        await navigator.clipboard.writeText(connectionUrl)
       } else {
         const textArea = document.createElement('textarea')
-        textArea.value = manualKey
+        textArea.value = connectionUrl
         textArea.style.position = 'fixed'
         textArea.style.opacity = '0'
         textArea.style.left = '-9999px'
@@ -84,6 +111,11 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
       tg?.HapticFeedback?.notificationOccurred('error')
     }
   }
+
+  useMainButton({
+    text: 'Подключить Onyx VPN',
+    onClick: handleConnect,
+  })
 
   return (
     <motion.div
@@ -122,20 +154,6 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
         </div>
       </motion.div>
 
-      <motion.button
-        className="connect-cta"
-        onClick={handleConnect}
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.3 }}
-        whileTap={{ scale: 0.96 }}
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        Подключить Onyx VPN
-      </motion.button>
-
       {showFallback && (
         <motion.div
           className="clipboard-fallback"
@@ -146,15 +164,14 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
           <div className="fallback-title">Скопируйте ключ вручную:</div>
           <textarea
             className="fallback-key"
-            value={manualKey}
-            onChange={(e) => setManualKey(e.target.value)}
+            value={connectionUrl}
             readOnly
             rows={4}
           />
           <button className="fallback-copy-button" onClick={handleManualCopy}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="9" y="9" width="13" height="13" rx="2" />
-              <path d="M5 15H4C2.9 15 2 14.1 2 13V4C2 2.9 2.9 2 4 2H13C14.1 2 15 2.9 15 4V5" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M5 15H4C2.9 15 2 14.1 2 13V4C2 2.9 2.9 2 3 2H13C14.1 2 15 2.9 15 4V5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             Скопировать вручную
           </button>

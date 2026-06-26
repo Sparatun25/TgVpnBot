@@ -1,0 +1,36 @@
+initDataLen: 18
+root children count: 1
+root first child class: app app-onboarding
+loadingScreen: False
+errorScreen: False
+welcomeScreen: False
+onboardingScreen: True
+
+=== BODY TEXT ===
+Onyx VPN
+
+Попробуйте все возможности VPN бесплатно в течение 3 дней
+
+🛡
+Безопасное
+соединение
+⚡️
+Скорость
+🌍
+Без границ
+3 дня бесплатно
+Без привязки карты
+Активация за 1 минуту
+⚡️ 14,280 пользователей защищают свои данные с Onyx прямо сейчас
+
+=== ALL DIVS ===
+['app app-onboarding', 'onboarding-screen', 'welcome-hero', 'welcome-icon', 'welcome-benefits', 'benefit-item benefit-item-primary', 'benefit-icon', 'benefit-text', 'benefit-item benefit-item-secondary', 'benefit-icon benefit-icon-small', 'benefit-text benefit-text-small', 'benefit-item benefit-item-secondary', 'benefit-icon benefit-icon-small', 'benefit-text benefit-text-small', 'welcome-trial-card', 'trial-feature', 'trial-feature', 'trial-feature', 'welcome-social-proof']
+
+=== CONSOLE (5) ===
+[error] Failed to load resource: net::ERR_FAILED
+[debug] [vite] connecting...
+[debug] [vite] connected.
+[info] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[error] Failed to load resource: the server responded with a status of 401 (Unauthorized)
+
+=== PAGE ERRORS (0) ===

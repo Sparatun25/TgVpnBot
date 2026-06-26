@@ -1,11 +1,23 @@
 """Админ-панель: веб-интерфейс."""
 
-from fastapi import APIRouter, Request, HTTPException, status
-from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+import logging
+import secrets
+from datetime import datetime, timedelta, timezone
+from typing import Annotated
 
-from api.auth import validate_login_widget
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import HTMLResponse
+from fastapi.security import HTTPAuthorizationCredentials
+from pydantic import BaseModel
+from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from api.auth import security, validate_login_widget
 from core.config import settings
+from core.db import get_session
+from database.models import AdminSession
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["admin-ui"])
 
@@ -22,13 +34,21 @@ class TelegramLoginData(BaseModel):
 
 
 @router.post("/api/admin/login")
-async def admin_login(data: TelegramLoginData):
+async def admin_login(
+    data: TelegramLoginData,
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
     """
     Валидация Telegram Login Widget для админки.
 
-    Возвращает токен (tg_id) если пользователь — админ.
+    Создаёт новую AdminSession с TTL (по умолчанию 24 часа) и возвращает
+    секретный токен. Клиент хранит токен в sessionStorage и передаёт его
+    в Authorization: Bearer <token> при последующих запросах.
+
+    Прежняя схема с передачей tg_id в X-Admin-Tg-Id считалась небезопасной
+    (подделка заголовка = полный доступ к админке без аутентификации) и
+    удалена из require_admin.
     """
-    # Преобразуем в словарь для валидации
     data_dict = data.model_dump()
 
     bot_token = settings.bot_token
@@ -46,14 +66,69 @@ async def admin_login(data: TelegramLoginData):
             detail=f"Ошибка валидации: {str(e)}",
         )
 
-    # Проверяем, что пользователь — админ
     if tg_id not in settings.bot_admin_ids:
+        logger.warning("Попытка входа в админку: tg_id=%s (не админ)", tg_id)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Доступ запрещён: вы не администратор",
         )
 
-    return {"tg_id": tg_id, "message": "Авторизация успешна"}
+    # Чистим протухшие сессии этого админа, чтобы таблица не пухла.
+    await session.execute(
+        delete(AdminSession).where(
+            AdminSession.tg_id == tg_id,
+            AdminSession.expires_at < datetime.now(timezone.utc),
+        )
+    )
+
+    # Создаём новую сессию.
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    admin_session = AdminSession(
+        tg_id=tg_id,
+        token=token,
+        created_at=now,
+        expires_at=now + timedelta(seconds=settings.admin_session_ttl_seconds),
+        last_used_at=now,
+    )
+    session.add(admin_session)
+    await session.commit()
+
+    logger.info(
+        "Создана admin-сессия для tg_id=%s, истекает %s",
+        tg_id,
+        admin_session.expires_at.isoformat(),
+    )
+
+    return {
+        "token": token,
+        "expires_at": admin_session.expires_at.isoformat(),
+        "tg_id": tg_id,
+        "message": "Авторизация успешна",
+    }
+
+
+@router.post("/api/admin/logout")
+async def admin_logout(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+):
+    """
+    Завершить текущую admin-сессию (отозвать токен).
+
+    Идемпотентно: если токена нет в БД — возвращает 200 всё равно,
+    чтобы клиент мог безопасно вызвать logout при истёкшей сессии.
+    """
+    if credentials and credentials.credentials:
+        token = credentials.credentials
+        result = await session.execute(
+            delete(AdminSession).where(AdminSession.token == token)
+        )
+        await session.commit()
+        if result.rowcount:
+            logger.info("Admin-сессия отозвана (logout)")
+
+    return {"message": "Logged out"}
 
 
 @router.get("/api/admin/config")
@@ -438,17 +513,36 @@ async def admin_ui(request: Request):
         // Получить заголовки для API
         function getHeaders() {
             const headers = { 'Content-Type': 'application/json' };
-            const adminTgId = sessionStorage.getItem('admin_tg_id');
-            if (adminTgId) {
-                headers['X-Admin-Tg-Id'] = adminTgId;
+            const token = sessionStorage.getItem('admin_token');
+            if (token) {
+                headers['Authorization'] = 'Bearer ' + token;
             }
             return headers;
+        }
+
+        // Обёртка fetch с автоматическим logout при 401.
+        // Если бэкенд отверг токен (истёк, отозван) — очищаем sessionStorage
+        // и перезагружаем страницу, чтобы пользователь увидел экран входа.
+        async function authFetch(url, options = {}) {
+            const res = await fetch(url, {
+                ...options,
+                headers: { ...getHeaders(), ...(options.headers || {}) },
+            });
+            if (res.status === 401) {
+                sessionStorage.removeItem('admin_token');
+                sessionStorage.removeItem('admin_tg_id');
+                window.location.reload();
+                // Возвращаем никогда не резолвящийся промис — код ниже не выполнится,
+                // потому что reload прерывает выполнение скриптов.
+                return new Promise(() => {});
+            }
+            return res;
         }
 
         // Загрузка метрик
         async function loadMetrics() {
             try {
-                const res = await fetch('/api/admin/metrics', { headers: getHeaders() });
+                const res = await authFetch('/api/admin/metrics');
                 if (!res.ok) throw new Error('Не удалось загрузить метрики');
                 state.metrics = await res.json();
             } catch (err) {
@@ -470,7 +564,7 @@ async def admin_ui(request: Request):
                 if (state.searchTgId) params.append('search_tg_id', state.searchTgId);
                 if (state.statusFilter) params.append('status_filter', state.statusFilter);
 
-                const res = await fetch(`/api/admin/subscriptions?${params}`, { headers: getHeaders() });
+                const res = await authFetch(`/api/admin/subscriptions?${params}`);
                 if (!res.ok) throw new Error('Не удалось загрузить подписки');
                 const data = await res.json();
                 state.subscriptions = data.items;
@@ -486,9 +580,8 @@ async def admin_ui(request: Request):
         // Продление подписки
         async function handleExtend(subscriptionId, days) {
             try {
-                const res = await fetch(`/api/admin/subscriptions/${subscriptionId}/extend`, {
+                const res = await authFetch(`/api/admin/subscriptions/${subscriptionId}/extend`, {
                     method: 'POST',
-                    headers: getHeaders(),
                     body: JSON.stringify({ days }),
                 });
                 if (!res.ok) throw new Error('Не удалось продлить подписку');
@@ -503,9 +596,8 @@ async def admin_ui(request: Request):
         // Начисление баланса
         async function handleTopUp(tgId, amountRubles, comment) {
             try {
-                const res = await fetch(`/api/admin/users/${tgId}/topup`, {
+                const res = await authFetch(`/api/admin/users/${tgId}/topup`, {
                     method: 'POST',
-                    headers: getHeaders(),
                     body: JSON.stringify({ amount_rubles: amountRubles, comment }),
                 });
                 if (!res.ok) {
@@ -526,9 +618,8 @@ async def admin_ui(request: Request):
         async function handleRevoke(subscriptionId) {
             if (!confirm('Вы уверены? Ключ будет отозван безвозвратно.')) return;
             try {
-                const res = await fetch(`/api/admin/subscriptions/${subscriptionId}/revoke`, {
+                const res = await authFetch(`/api/admin/subscriptions/${subscriptionId}/revoke`, {
                     method: 'DELETE',
-                    headers: getHeaders(),
                 });
                 if (!res.ok) throw new Error('Не удалось отозвать ключ');
                 await loadSubscriptions();
@@ -543,9 +634,8 @@ async def admin_ui(request: Request):
             if (!confirm('ВНИМАНИЕ! Вы уверены, что хотите удалить ВСЕ подписки? Это действие необратимо!')) return;
             if (!confirm('Точно удалить все подписки? Последнее предупреждение!')) return;
             try {
-                const res = await fetch('/api/admin/subscriptions/clear-all', {
+                const res = await authFetch('/api/admin/subscriptions/clear-all', {
                     method: 'DELETE',
-                    headers: getHeaders(),
                 });
                 if (!res.ok) {
                     const err = await res.json();
@@ -561,8 +651,22 @@ async def admin_ui(request: Request):
         }
 
         // Выход
-        function handleLogout() {
+        async function handleLogout() {
+            const token = sessionStorage.getItem('admin_token');
+            sessionStorage.removeItem('admin_token');
             sessionStorage.removeItem('admin_tg_id');
+            try {
+                if (token) {
+                    // Используем прямой fetch (не authFetch): при logout не нужно
+                    // повторно чистить sessionStorage — мы уже это сделали выше.
+                    await fetch('/api/admin/logout', {
+                        method: 'POST',
+                        headers: { 'Authorization': 'Bearer ' + token },
+                    });
+                }
+            } catch (err) {
+                // Не критично — сессия в любом случае удалена из sessionStorage
+            }
             window.location.reload();
         }
 
@@ -739,14 +843,14 @@ async def admin_ui(request: Request):
         // Основной рендер
         function render() {
             const app = document.getElementById('app');
-            const adminTgId = sessionStorage.getItem('admin_tg_id');
+            const adminToken = sessionStorage.getItem('admin_token');
 
             if (state.error) {
                 app.innerHTML = `<div class="admin-container"><div class="error">${state.error}</div><button class="btn btn-primary" onclick="window.location.reload()">Обновить страницу</button></div>`;
                 return;
             }
 
-            if (!adminTgId) {
+            if (!adminToken) {
                 app.innerHTML = renderLogin();
                 initTelegramWidget();
             } else {
@@ -783,7 +887,11 @@ async def admin_ui(request: Request):
                 }
 
                 const result = await res.json();
-                sessionStorage.setItem('admin_tg_id', result.tg_id);
+                if (!result.token) {
+                    throw new Error('Сервер не вернул токен сессии');
+                }
+                sessionStorage.setItem('admin_token', result.token);
+                sessionStorage.setItem('admin_tg_id', String(result.tg_id));
                 window.location.reload();
             } catch (err) {
                 const errorDiv = document.getElementById('login-error');
@@ -847,8 +955,8 @@ async def admin_ui(request: Request):
 
         // Инициализация
         document.addEventListener('DOMContentLoaded', () => {
-            const adminTgId = sessionStorage.getItem('admin_tg_id');
-            if (adminTgId) {
+            const adminToken = sessionStorage.getItem('admin_token');
+            if (adminToken) {
                 loadMetrics();
                 loadSubscriptions();
             } else {

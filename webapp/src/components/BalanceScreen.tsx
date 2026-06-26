@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useTelegram } from '../hooks/useTelegram'
 import { useApi } from '../hooks/useApi'
@@ -8,51 +8,88 @@ interface BalanceScreenProps {
   onBalanceUpdate?: () => void
 }
 
+const POLL_INTERVAL_MS = 2000
+const POLL_TIMEOUT_MS = 120000
+const FETCH_TIMEOUT_MS = 8000
+const SUCCESS_DISMISS_MS = 2000
+
 export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) {
   const { tg, getInitData } = useTelegram()
   const { createPayment } = useApi(getInitData)
   const [amount, setAmount] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
-  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'success'>('idle')
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'success' | 'timeout'>('idle')
 
   const quickAmounts = [100, 300, 500, 1000]
+
+  const isMountedRef = useRef(true)
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      if (successTimerRef.current) {
+        clearTimeout(successTimerRef.current)
+        successTimerRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (paymentStatus !== 'pending') return
 
+    let cancelled = false
+
     const pollPaymentStatus = async () => {
+      const fetchController = new AbortController()
+      const timeoutId = setTimeout(() => fetchController.abort(), FETCH_TIMEOUT_MS)
       try {
         const response = await fetch('/api/payment/status', {
           headers: {
             'Authorization': `Bearer ${getInitData()}`,
           },
+          signal: fetchController.signal,
         })
+        clearTimeout(timeoutId)
+
+        if (cancelled || !isMountedRef.current) return
 
         if (response.ok) {
           const data = await response.json()
           if (data.status === 'succeeded') {
             setPaymentStatus('success')
             tg?.HapticFeedback?.notificationOccurred('success')
-            setTimeout(() => {
+            successTimerRef.current = setTimeout(() => {
+              successTimerRef.current = null
+              if (!isMountedRef.current) return
               setPaymentStatus('idle')
               setAmount('')
               onBalanceUpdate?.()
-            }, 2000)
+            }, SUCCESS_DISMISS_MS)
           }
         }
       } catch {
-        // Ignore errors
+        clearTimeout(timeoutId)
       }
     }
 
-    const interval = setInterval(pollPaymentStatus, 2000)
-    const timeout = setTimeout(() => {
+    const interval = setInterval(pollPaymentStatus, POLL_INTERVAL_MS)
+    const overallTimeout = setTimeout(() => {
+      cancelled = true
       clearInterval(interval)
-    }, 120000)
+      // Если polling провисел POLL_TIMEOUT_MS без успеха — переводим UI
+      // в timeout, иначе юзер будет бесконечно смотреть на спиннер.
+      if (isMountedRef.current && paymentStatus === 'pending') {
+        setPaymentStatus('timeout')
+        tg?.HapticFeedback?.notificationOccurred('error')
+      }
+    }, POLL_TIMEOUT_MS)
 
     return () => {
+      cancelled = true
       clearInterval(interval)
-      clearTimeout(timeout)
+      clearTimeout(overallTimeout)
     }
   }, [paymentStatus, getInitData, tg, onBalanceUpdate])
 
@@ -74,6 +111,8 @@ export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) 
     const amountKopecks = amountValue * 100
     const paymentData = await createPayment(amountKopecks)
 
+    if (!isMountedRef.current) return
+
     if (paymentData && paymentData.payment_url) {
       setPaymentStatus('pending')
       window.open(paymentData.payment_url, '_blank')
@@ -81,6 +120,18 @@ export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) 
       setIsProcessing(false)
       tg?.HapticFeedback?.notificationOccurred('error')
     }
+  }
+
+  // Ручная отмена ожидания оплаты. Polling остановится через cleanup polling-эффекта.
+  const handleCancelPending = () => {
+    tg?.HapticFeedback?.impactOccurred('light')
+    setPaymentStatus('idle')
+  }
+
+  // Повторный запуск polling после таймаута.
+  const handleRetryPending = () => {
+    tg?.HapticFeedback?.impactOccurred('light')
+    setPaymentStatus('pending')
   }
 
   return (
@@ -118,6 +169,39 @@ export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) 
           >
             <div className="pending-spinner" />
             <span>Ожидание подтверждения оплаты...</span>
+            <button
+              className="balance-pending-cancel"
+              onClick={handleCancelPending}
+              aria-label="Отменить ожидание оплаты"
+            >
+              Отменить
+            </button>
+          </motion.div>
+        )}
+
+        {paymentStatus === 'timeout' && (
+          <motion.div
+            className="balance-timeout"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            role="alert"
+          >
+            <span>Время ожидания истекло. Если оплата прошла, обновите экран.</span>
+            <div className="balance-timeout-actions">
+              <button
+                className="balance-timeout-retry"
+                onClick={handleRetryPending}
+              >
+                Повторить
+              </button>
+              <button
+                className="balance-timeout-dismiss"
+                onClick={handleCancelPending}
+              >
+                Закрыть
+              </button>
+            </div>
           </motion.div>
         )}
 
@@ -218,6 +302,21 @@ export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) 
             <div className="balance-info-subtitle">Через систему быстрых платежей</div>
           </div>
         </div>
+      </motion.div>
+
+      <motion.div
+        className="balance-cat-companion"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.5, ease: [0.32, 0.72, 0, 1] }}
+        aria-hidden="true"
+      >
+        <img
+          src="/cat-companion.png"
+          alt=""
+          className="balance-cat-image"
+          draggable={false}
+        />
       </motion.div>
     </motion.div>
   )

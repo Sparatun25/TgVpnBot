@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { OnboardingStep, STORAGE_KEY } from '../types/onboarding'
+import { OnboardingStep, ONBOARDING_STEPS, STORAGE_KEY } from '../types/onboarding'
 
 export function useOnboarding() {
   const [step, setStepState] = useState<OnboardingStep>(() => {
@@ -15,40 +15,17 @@ export function useOnboarding() {
     localStorage.setItem(STORAGE_KEY, newStep)
   }, [])
 
-  const resetOnboarding = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY)
-    setStepState('welcome')
-  }, [])
-
   const goNext = useCallback(() => {
-    const stepOrder: OnboardingStep[] = [
-      'welcome',
-      'install',
-      'preparing',
-      'connect',
-      'waiting',
-      'success',
-      'dashboard',
-    ]
-    const currentIndex = stepOrder.indexOf(step)
-    if (currentIndex < stepOrder.length - 1) {
-      setStep(stepOrder[currentIndex + 1])
+    const currentIndex = ONBOARDING_STEPS.indexOf(step)
+    if (currentIndex < ONBOARDING_STEPS.length - 1) {
+      setStep(ONBOARDING_STEPS[currentIndex + 1])
     }
   }, [step, setStep])
 
   const goBack = useCallback(() => {
-    const stepOrder: OnboardingStep[] = [
-      'welcome',
-      'install',
-      'preparing',
-      'connect',
-      'waiting',
-      'success',
-      'dashboard',
-    ]
-    const currentIndex = stepOrder.indexOf(step)
+    const currentIndex = ONBOARDING_STEPS.indexOf(step)
     if (currentIndex > 0) {
-      setStep(stepOrder[currentIndex - 1])
+      setStep(ONBOARDING_STEPS[currentIndex - 1])
     }
   }, [step, setStep])
 
@@ -67,10 +44,9 @@ export function useOnboarding() {
     setStep,
     goNext,
     goBack,
-    resetOnboarding,
   }
 }
 
 function isValidStep(value: string): boolean {
-  return ['welcome', 'install', 'preparing', 'connect', 'waiting', 'success', 'dashboard'].includes(value)
+  return ONBOARDING_STEPS.includes(value as OnboardingStep)
 }

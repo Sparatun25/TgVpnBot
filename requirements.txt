@@ -18,3 +18,9 @@ aiohttp==3.10.10
 
 # Utilities
 python-dotenv==1.0.1
+cryptography==43.0.1
+
+# Observability
+structlog==26.1.0
+prometheus-client==0.25.0
+prometheus-fastapi-instrumentator==8.0.2

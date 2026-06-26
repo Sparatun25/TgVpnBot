@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { useTelegram } from './hooks/useTelegram'
 import { useApi, ProfileData } from './hooks/useApi'
 import { useOnboarding } from './hooks/useOnboarding'
+import { useBackButton } from './hooks/useBackButton'
 import { WelcomeScreen } from './components/onboarding/WelcomeScreen'
 import { InstallScreen } from './components/onboarding/InstallScreen'
 import { PreparingScreen } from './components/onboarding/PreparingScreen'
@@ -14,7 +15,6 @@ import { TariffsScreen } from './components/TariffsScreen'
 import { BalanceScreen } from './components/BalanceScreen'
 import { ProfileScreen } from './components/ProfileScreen'
 import { BottomNav } from './components/BottomNav'
-import { TopUpBottomSheet } from './components/TopUpBottomSheet'
 
 type MainTab = 'dashboard' | 'tariffs' | 'balance' | 'profile'
 
@@ -25,38 +25,62 @@ export default function App() {
 
   const [profile, setProfile] = useState<ProfileData | null>(null)
   const [activeTab, setActiveTab] = useState<MainTab>('dashboard')
-  const [showTopUp, setShowTopUp] = useState(false)
-  const [requiredAmount] = useState(0)
+  const [autoPlanId, setAutoPlanId] = useState<string | null>(null)
+  // Ошибка активации триала. Сбрасывается при старте новой попытки.
+  // Без этого юзер, нажав «Продолжить» при сбое сети, не получал бы обратной связи —
+  // кнопка просто ничего не делала, и он застревал на preparing-экране.
+  const [trialError, setTrialError] = useState<string | null>(null)
 
-  // Deep link routing: parse URL params from bot notifications
-  useEffect(() => {
+  // Deep link routing: parse URL params once on mount, store in ref.
+  // Split into two effects so that `plan` (which needs balance from profile)
+  // doesn't race against loadProfile. screen/step are applied immediately.
+  const deepLinkRef = useRef<{ plan: string | null; screen: string | null; step: string | null } | null>(null)
+  if (deepLinkRef.current === null) {
     const params = new URLSearchParams(window.location.search)
-    const screen = params.get('screen')
-    const plan = params.get('plan')
-    const stepParam = params.get('step')
+    deepLinkRef.current = {
+      plan: params.get('plan'),
+      screen: params.get('screen'),
+      step: params.get('step'),
+    }
+    if (deepLinkRef.current.plan || deepLinkRef.current.screen || deepLinkRef.current.step) {
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }
 
-    // Handle screen parameter (e.g., screen=tariffs)
-    if (screen === 'tariffs') {
+  useEffect(() => {
+    const dl = deepLinkRef.current
+    if (!dl) return
+
+    if (dl.screen === 'tariffs') {
       setActiveTab('tariffs')
-      setStep('dashboard') // Ensure we're in dashboard mode, not onboarding
+      setStep('dashboard')
     }
-
-    // Handle step parameter (e.g., step=connect)
-    if (stepParam === 'connect') {
+    if (dl.step === 'connect') {
       setStep('connect')
-    }
-
-    // Clean up URL params after processing
-    if (screen || plan || stepParam) {
-      const newUrl = window.location.pathname
-      window.history.replaceState({}, '', newUrl)
     }
   }, [setStep])
 
-  // Telegram theme integration
+  // Apply plan only after profile is loaded — otherwise auto-buy fires with
+  // balance=0 and opens the top-up sheet for users who actually have funds.
   useEffect(() => {
-    const themeParams = tg?.themeParams
-    if (themeParams) {
+    const dl = deepLinkRef.current
+    if (!dl?.plan || !profile) return
+
+    setActiveTab('tariffs')
+    setStep('dashboard')
+    setAutoPlanId(dl.plan)
+    deepLinkRef.current = { ...dl, plan: null }
+  }, [profile, setStep])
+
+  // Telegram theme integration.
+  // Биндим themeParams в CSS-переменные и подписываемся на themeChanged —
+  // пользователь может переключать тему в настройках Telegram на лету.
+  useEffect(() => {
+    if (!tg) return
+
+    const applyTheme = () => {
+      const themeParams = tg.themeParams
+      if (!themeParams) return
       const root = document.documentElement
       if (themeParams.bg_color) root.style.setProperty('--tg-bg', themeParams.bg_color)
       if (themeParams.text_color) root.style.setProperty('--tg-text', themeParams.text_color)
@@ -65,7 +89,18 @@ export default function App() {
       if (themeParams.button_text_color) root.style.setProperty('--tg-button-text', themeParams.button_text_color)
       if (themeParams.secondary_bg_color) root.style.setProperty('--tg-secondary-bg', themeParams.secondary_bg_color)
     }
+
+    applyTheme()
+    tg.onEvent?.('themeChanged', applyTheme)
+
+    return () => {
+      tg.offEvent?.('themeChanged', applyTheme)
+    }
   }, [tg])
+
+  // Telegram BackButton: показываем на всех шагах onboarding кроме welcome
+  // (там нет предыдущего шага — goBack был бы no-op).
+  useBackButton(goBack, step !== 'welcome' && step !== 'dashboard')
 
   // Load profile
   useEffect(() => {
@@ -94,13 +129,20 @@ export default function App() {
   }, [goNext])
 
   const handlePreparingComplete = useCallback(async () => {
-    // Activate trial on backend
+    // Сбрасываем ошибку предыдущей попытки — иначе юзер увидит stale-сообщение
+    // при повторном клике после успешного retry.
+    setTrialError(null)
     const result = await activateTrial()
     if (result) {
       await loadProfile()
       goNext() // preparing -> connect
+      return
     }
-  }, [activateTrial, goNext])
+    // activateTrial вернул null — это либо сетевая ошибка, либо 4xx/5xx.
+    // useApi уже положил текст ошибки в свой error; берём его, чтобы не выдумывать своё.
+    tg?.HapticFeedback?.notificationOccurred('error')
+    setTrialError(error ?? 'Не удалось активировать триал. Попробуйте ещё раз.')
+  }, [activateTrial, error, goNext, tg])
 
   const handleConnect = useCallback(() => {
     goNext() // connect -> waiting
@@ -170,6 +212,8 @@ export default function App() {
                   key="preparing"
                   onComplete={handlePreparingComplete}
                   onBack={goBack}
+                  error={trialError}
+                  onRetry={handlePreparingComplete}
                 />
               )}
               {step === 'connect' && (
@@ -182,7 +226,6 @@ export default function App() {
               {step === 'waiting' && (
                 <WaitingScreen
                   key="waiting"
-                  connectionUrl={profile?.subscription.connection_url || ''}
                   onActivated={handleActivated}
                 />
               )}
@@ -200,7 +243,12 @@ export default function App() {
                 />
               )}
               {activeTab === 'tariffs' && (
-                <TariffsScreen key="tariffs" balance={profile?.balance ?? 0} />
+                <TariffsScreen
+                  key="tariffs"
+                  balance={profile?.balance ?? 0}
+                  autoPlanId={autoPlanId}
+                  onAutoPlanConsumed={() => setAutoPlanId(null)}
+                />
               )}
               {activeTab === 'balance' && (
                 <BalanceScreen
@@ -215,6 +263,7 @@ export default function App() {
                   user={user}
                   subscriptionExpiresAt={profile?.subscription.expires_at ?? null}
                   referralCode={profile?.referral_code}
+                  referralCount={profile?.referral_count ?? 0}
                 />
               )}
             </>
@@ -225,13 +274,6 @@ export default function App() {
       {!isOnboarding && (
         <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
       )}
-
-      <TopUpBottomSheet
-        isOpen={showTopUp}
-        onClose={() => setShowTopUp(false)}
-        requiredAmount={requiredAmount}
-        onPaymentSuccess={handlePaymentSuccess}
-      />
     </div>
   )
 }

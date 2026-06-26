@@ -19,12 +19,26 @@ interface TelegramWebApp {
   expand: () => void
   close: () => void
   openLink: (url: string) => void
+  openTelegramLink: (url: string) => void
   MainButton: {
     text: string
     color: string
     textColor: string
     isVisible: boolean
     isActive: boolean
+    isProgressVisible: boolean
+    setText: (text: string) => void
+    show: () => void
+    hide: () => void
+    enable: () => void
+    disable: () => void
+    onClick: (cb: () => void) => void
+    offClick: (cb: () => void) => void
+    showProgress: (leaveActive?: boolean) => void
+    hideProgress: () => void
+  }
+  BackButton: {
+    isVisible: boolean
     show: () => void
     hide: () => void
     onClick: (cb: () => void) => void
@@ -36,6 +50,8 @@ interface TelegramWebApp {
   }
   themeParams: Record<string, string>
   colorScheme: 'light' | 'dark'
+  onEvent: (event: string, handler: () => void) => void
+  offEvent: (event: string, handler: () => void) => void
 }
 
 declare global {

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { TelegramUser } from '../hooks/useTelegram'
 import { useTelegram } from '../hooks/useTelegram'
@@ -8,18 +8,28 @@ interface ProfileScreenProps {
   subscriptionExpiresAt: string | null
   referralCode?: string
   referralCount?: number
-  referralEarnings?: number
 }
+
+const COPIED_INDICATOR_MS = 2000
 
 export function ProfileScreen({
   user,
   subscriptionExpiresAt,
   referralCode,
   referralCount = 0,
-  referralEarnings = 0,
 }: ProfileScreenProps) {
   const { tg } = useTelegram()
   const [copied, setCopied] = useState(false)
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) {
+        clearTimeout(copiedTimerRef.current)
+        copiedTimerRef.current = null
+      }
+    }
+  }, [])
 
   const referralLink = `https://t.me/Onyx_vpn24_bot?start=ref_${user?.id}`
   const referralGoal = 3
@@ -43,7 +53,13 @@ export function ProfileScreen({
       }
       setCopied(true)
       tg?.HapticFeedback?.notificationOccurred('success')
-      setTimeout(() => setCopied(false), 2000)
+      if (copiedTimerRef.current) {
+        clearTimeout(copiedTimerRef.current)
+      }
+      copiedTimerRef.current = setTimeout(() => {
+        copiedTimerRef.current = null
+        setCopied(false)
+      }, COPIED_INDICATOR_MS)
     } catch {
       tg?.HapticFeedback?.notificationOccurred('error')
     }
@@ -137,17 +153,6 @@ export function ProfileScreen({
           </div>
         </div>
 
-        <div className="referral-stats">
-          <div className="referral-stat">
-            <div className="stat-value">{referralCount}</div>
-            <div className="stat-label">Приглашено друзей</div>
-          </div>
-          <div className="referral-stat">
-            <div className="stat-value">{referralEarnings} ₽</div>
-            <div className="stat-label">Заработано</div>
-          </div>
-        </div>
-
         <motion.button
           className={`referral-copy-button ${copied ? 'copied' : ''}`}
           onClick={handleCopyReferral}
@@ -191,6 +196,24 @@ export function ProfileScreen({
           </svg>
           <span>Поддержка</span>
         </a>
+      </motion.div>
+
+      <motion.div
+        className="profile-cat-companion"
+        initial={{ opacity: 0, scale: 0.85 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.6, delay: 0.5, ease: [0.32, 0.72, 0, 1] }}
+        aria-hidden="true"
+      >
+        <img
+          src="/cat-about.png"
+          alt=""
+          className="profile-cat-image"
+          draggable={false}
+        />
+        <p className="profile-cat-quote">
+          «Спасибо, что выбрали Onyx VPN!»
+        </p>
       </motion.div>
     </motion.div>
   )

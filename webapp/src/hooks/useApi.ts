@@ -6,6 +6,7 @@ const REQUEST_TIMEOUT = 30000 // 30 секунд
 export interface ProfileData {
   balance: number
   referral_code: string
+  referral_count: number
   subscription: {
     active: boolean
     plan_type: string | null
@@ -27,6 +28,14 @@ interface PaymentResponse {
   qr_code: string
   amount_rubles: number
   status: string
+}
+
+export interface BackendTariff {
+  id: string
+  name: string
+  price_kopecks: number
+  price_rubles: number
+  days: number
 }
 
 export function useApi(getInitData: () => string) {
@@ -107,15 +116,22 @@ export function useApi(getInitData: () => string) {
       return await response.json()
     } catch (err) {
       clearTimeout(timeoutId)
-      if (err instanceof Error && err.name === 'AbortError') {
-        setError('Превышено время ожидания. Попробуйте снова.')
-      } else {
-        setError(err instanceof Error ? err.message : 'Ошибка сети')
+      // Не выставляем ошибку, если запрос был отменён более новым вызовом
+      // (React StrictMode дублирует эффекты, плюс ретраи из UI). Иначе
+      // отменённый запрос оставляет stale error поверх успешного ответа нового.
+      if (abortControllerRef.current === controller) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          setError('Превышено время ожидания. Попробуйте снова.')
+        } else {
+          setError(err instanceof Error ? err.message : 'Ошибка сети')
+        }
       }
       return null
     } finally {
-      setLoading(false)
-      abortControllerRef.current = null
+      if (abortControllerRef.current === controller) {
+        setLoading(false)
+        abortControllerRef.current = null
+      }
     }
   }, [headers, cancelRequest])
 
@@ -148,15 +164,22 @@ export function useApi(getInitData: () => string) {
       return await response.json()
     } catch (err) {
       clearTimeout(timeoutId)
-      if (err instanceof Error && err.name === 'AbortError') {
-        setError('Превышено время ожидания. Попробуйте снова.')
-      } else {
-        setError(err instanceof Error ? err.message : 'Ошибка сети')
+      // Не выставляем ошибку, если запрос был отменён более новым вызовом
+      // (React StrictMode дублирует эффекты, плюс ретраи из UI). Иначе
+      // отменённый запрос оставляет stale error поверх успешного ответа нового.
+      if (abortControllerRef.current === controller) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          setError('Превышено время ожидания. Попробуйте снова.')
+        } else {
+          setError(err instanceof Error ? err.message : 'Ошибка сети')
+        }
       }
       return null
     } finally {
-      setLoading(false)
-      abortControllerRef.current = null
+      if (abortControllerRef.current === controller) {
+        setLoading(false)
+        abortControllerRef.current = null
+      }
     }
   }, [headers, cancelRequest])
 
@@ -190,15 +213,22 @@ export function useApi(getInitData: () => string) {
       return await response.json()
     } catch (err) {
       clearTimeout(timeoutId)
-      if (err instanceof Error && err.name === 'AbortError') {
-        setError('Превышено время ожидания. Попробуйте снова.')
-      } else {
-        setError(err instanceof Error ? err.message : 'Ошибка сети')
+      // Не выставляем ошибку, если запрос был отменён более новым вызовом
+      // (React StrictMode дублирует эффекты, плюс ретраи из UI). Иначе
+      // отменённый запрос оставляет stale error поверх успешного ответа нового.
+      if (abortControllerRef.current === controller) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          setError('Превышено время ожидания. Попробуйте снова.')
+        } else {
+          setError(err instanceof Error ? err.message : 'Ошибка сети')
+        }
       }
       return null
     } finally {
-      setLoading(false)
-      abortControllerRef.current = null
+      if (abortControllerRef.current === controller) {
+        setLoading(false)
+        abortControllerRef.current = null
+      }
     }
   }, [headers, cancelRequest])
 
@@ -232,56 +262,68 @@ export function useApi(getInitData: () => string) {
       return await response.json()
     } catch (err) {
       clearTimeout(timeoutId)
-      if (err instanceof Error && err.name === 'AbortError') {
-        setError('Превышено время ожидания. Попробуйте снова.')
-      } else {
-        setError(err instanceof Error ? err.message : 'Ошибка сети')
+      // Не выставляем ошибку, если запрос был отменён более новым вызовом
+      // (React StrictMode дублирует эффекты, плюс ретраи из UI). Иначе
+      // отменённый запрос оставляет stale error поверх успешного ответа нового.
+      if (abortControllerRef.current === controller) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          setError('Превышено время ожидания. Попробуйте снова.')
+        } else {
+          setError(err instanceof Error ? err.message : 'Ошибка сети')
+        }
       }
       return null
     } finally {
-      setLoading(false)
-      abortControllerRef.current = null
+      if (abortControllerRef.current === controller) {
+        setLoading(false)
+        abortControllerRef.current = null
+      }
     }
   }, [headers, cancelRequest])
 
-  const checkPaymentStatus = useCallback(async (paymentId: string): Promise<{ status: string } | null> => {
-    cancelRequest()
+  const getTariffs = useCallback(async (signal?: AbortSignal): Promise<BackendTariff[] | null> => {
+    // Compose caller-provided signal with the standard timeout.
+    // Either signal aborting cancels the network request.
     const controller = new AbortController()
-    abortControllerRef.current = controller
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
 
-    const timeoutId = setTimeout(() => {
-      controller.abort()
-    }, REQUEST_TIMEOUT)
+    const onCallerAbort = () => controller.abort()
+    if (signal) {
+      if (signal.aborted) {
+        clearTimeout(timeoutId)
+        return null
+      }
+      signal.addEventListener('abort', onCallerAbort)
+    }
 
     try {
-      const response = await fetch(`${API_BASE}/payment/status/${paymentId}`, {
+      const response = await fetch(`${API_BASE}/tariffs`, {
         method: 'GET',
         headers: headers(),
         signal: controller.signal,
       })
 
-      clearTimeout(timeoutId)
-
       if (!response.ok) {
         return null
       }
 
-      return await response.json()
+      const data = await response.json()
+      return data.tariffs ?? null
     } catch {
       return null
     } finally {
-      abortControllerRef.current = null
+      clearTimeout(timeoutId)
+      if (signal) signal.removeEventListener('abort', onCallerAbort)
     }
-  }, [headers, cancelRequest])
+  }, [headers])
 
   return {
     loading,
     error,
     getProfile,
+    getTariffs,
     activateTrial,
     createPayment,
     purchaseSubscription,
-    checkPaymentStatus,
-    cancelRequest,
   }
 }

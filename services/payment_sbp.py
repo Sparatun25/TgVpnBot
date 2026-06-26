@@ -7,6 +7,7 @@ from typing import Any
 import aiohttp
 
 from core.config import settings
+from core.metrics import payments_created_total
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ async def create_sbp_payment(
         YooKassaPaymentError: Если не удалось создать платеж.
     """
     if not settings.yukassa_shop_id or not settings.yukassa_secret_key:
+        payments_created_total.labels(kind="real", status="error").inc()
         raise YooKassaPaymentError("ЮKassa не настроена")
 
     # Конвертируем копейки в рубли
@@ -104,6 +106,7 @@ async def create_sbp_payment(
                         response.status,
                         error_text,
                     )
+                    payments_created_total.labels(kind="real", status="error").inc()
                     raise YooKassaPaymentError(
                         f"ЮKassa вернула ошибку: {response.status}"
                     )
@@ -118,6 +121,7 @@ async def create_sbp_payment(
                 status = data.get("status")
 
                 if not payment_id:
+                    payments_created_total.labels(kind="real", status="error").inc()
                     raise YooKassaPaymentError("ЮKassa не вернула payment_id")
 
                 logger.info(
@@ -125,6 +129,13 @@ async def create_sbp_payment(
                     payment_id,
                     status,
                 )
+
+                # Метрика: YooKassa приняла платёж. status приходит как
+                # "pending" / "waiting_for_capture" — это нормальные стартовые
+                # статусы. Финальный succeeded учитывается в webhook.
+                payments_created_total.labels(
+                    kind="real", status=status or "unknown"
+                ).inc()
 
                 return {
                     "payment_id": payment_id,
@@ -136,10 +147,12 @@ async def create_sbp_payment(
 
     except aiohttp.ClientError as e:
         logger.error("Ошибка соединения с ЮKassa: %s", e)
+        payments_created_total.labels(kind="real", status="error").inc()
         raise YooKassaPaymentError(f"Ошибка соединения: {e}") from e
 
     except Exception as e:
         logger.exception("Неожиданная ошибка при создании платежа: %s", e)
+        payments_created_total.labels(kind="real", status="error").inc()
         raise YooKassaPaymentError(f"Неожиданная ошибка: {e}") from e
 
 

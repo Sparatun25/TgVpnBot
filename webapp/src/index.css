@@ -4,8 +4,9 @@
   --onyx-card: #121214;
   --onyx-border: rgba(255, 255, 255, 0.06);
   --onyx-white: #FFFFFF;
-  --onyx-accent: #0066CC;
-  --onyx-accent-hover: #2F80ED;
+  --onyx-accent: #7C3AED;
+  --onyx-accent-hover: #6D28D9;
+  --onyx-accent-soft: #A78BFA;
   --onyx-success: #10B981;
   --onyx-warning: #F59E0B;
   --onyx-text: #FFFFFF;
@@ -19,6 +20,11 @@
   --tg-button: var(--onyx-accent);
   --tg-button-text: #FFFFFF;
   --tg-secondary-bg: var(--onyx-card);
+
+  /* Typography: distinctive pairing */
+  --font-display: 'Instrument Serif', Georgia, serif;
+  --font-body: 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'Geist', ui-monospace, monospace;
 
   /* Motion system */
   --ease-ios: cubic-bezier(0.32, 0.72, 0, 1);
@@ -35,13 +41,32 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', 'Roboto', sans-serif;
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--tg-bg, var(--onyx-bg));
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(255,255,255,0.04) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%, rgba(16,185,129,0.03) 0%, transparent 60%);
+  background-attachment: fixed;
   color: var(--tg-text, var(--onyx-text));
   overflow-x: hidden;
   min-height: 100vh;
+  letter-spacing: -0.01em;
+  position: relative;
+}
+
+/* Subtle noise texture overlay для атмосферной глубины */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.04 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-size: 240px 240px;
+  pointer-events: none;
+  opacity: 0.7;
+  z-index: 0;
+  mix-blend-mode: overlay;
 }
 
 #root {
@@ -55,6 +80,8 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  position: relative;
+  z-index: 1;
 }
 
 .app-onboarding {
@@ -68,6 +95,7 @@ body {
   margin: 0 auto;
   width: 100%;
   position: relative;
+  z-index: 1;
 }
 
 .app-onboarding .app-content {
@@ -76,10 +104,12 @@ body {
 
 /* Common Screen Styles */
 .screen-title {
-  font-size: 28px;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 400;
+  line-height: 1.1;
   margin-bottom: 8px;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.02em;
 }
 
 .screen-subtitle {
@@ -156,104 +186,445 @@ body {
   transform: scale(0.96);
 }
 
-/* Onboarding Screens */
+/* Onboarding Screens.
+   Telegram MainButton занимает ~56px внизу viewport,
+   поэтому padding-bottom 88px оставляет зазор для контента.
+   `safe center` гарантирует, что короткий контент центрируется
+   по вертикали, а длинный — прижимается к верху и скроллится,
+   а не уезжает за экран. */
 .onboarding-screen {
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  justify-content: safe center;
   min-height: calc(100vh - 48px);
-  padding: 40px 0;
+  padding: 40px 0 88px;
+  text-align: center;
   will-change: transform, opacity;
 }
 
 /* Welcome Screen */
+.welcome-screen {
+  position: relative;
+  padding-top: 28px;
+}
+
 .welcome-hero {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 28px;
 }
 
-.welcome-icon {
+/* Mascot orb — сигнатурный элемент бренда.
+   Слои: glow halo (дышит) + крутящиеся сигнальные кольца + тёмное ядро с маскотом. */
+.welcome-orb {
+  position: relative;
+  width: 144px;
+  height: 144px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin-bottom: 24px;
+}
+
+.welcome-orb__halo {
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(94,234,212,0.22) 0%, rgba(14,165,233,0.08) 45%, transparent 70%);
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+.welcome-orb__rings {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.welcome-orb__core {
+  position: relative;
+  width: 110px;
+  height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 32% 28%, #1f1f23 0%, #0B0B0C 78%);
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.07),
+    0 8px 32px rgba(0,0,0,0.55),
+    0 0 60px rgba(94,234,212,0.05);
+}
+
+/* Когда внутри orb реальное изображение котика — убираем тёмный круг-подложку,
+   чтобы PNG дышал и не обрезался границами radial-gradient. */
+.welcome-orb__core--image {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  width: 140px;
+  height: 140px;
+}
+
+.welcome-orb__image-wrap {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.welcome-orb__image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  filter: drop-shadow(0 8px 24px rgba(124, 58, 237, 0.35));
+}
+
+/* Брендовый "чип" Onyx VPN над заголовком */
+.welcome-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px 5px 9px;
+  background: rgba(255,255,255,0.035);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 100px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--onyx-text-muted);
+  margin-bottom: 16px;
+}
+
+.welcome-eyebrow__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #A78BFA;
+  box-shadow: 0 0 8px rgba(94,234,212,0.65);
 }
 
 .welcome-title {
-  font-size: 36px;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: 38px;
+  font-weight: 400;
+  line-height: 1.08;
   margin-bottom: 12px;
-  letter-spacing: -1px;
+  letter-spacing: -0.02em;
+  max-width: 320px;
+}
+
+.welcome-title__accent {
+  background: linear-gradient(135deg, #5EEAD4 0%, #38BDF8 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-style: italic;
 }
 
 .welcome-subtitle {
-  font-size: 16px;
+  font-size: 14px;
   color: var(--onyx-text-muted);
-  line-height: 1.5;
+  line-height: 1.55;
   max-width: 300px;
+  font-weight: 400;
 }
 
+/* Benefits grid — 3 карточки (главная шире).
+   На узких экранах схлопываются в стек. */
 .welcome-benefits {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 24px;
+  width: 100%;
+  max-width: 360px;
+}
+
+@media (max-width: 360px) {
+  .welcome-benefits {
+    grid-template-columns: 1fr;
+  }
+}
+
+.benefit-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.3s ease, background 0.3s ease;
+}
+
+.benefit-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.benefit-card:hover {
+  border-color: rgba(255,255,255,0.12);
+}
+
+.benefit-card:hover::after {
+  opacity: 1;
+}
+
+.benefit-card--primary {
+  background: linear-gradient(135deg, rgba(94,234,212,0.09) 0%, rgba(14,165,233,0.04) 100%);
+  border-color: rgba(94,234,212,0.22);
+}
+
+.benefit-card--primary:hover {
+  border-color: rgba(94,234,212,0.35);
+}
+
+.benefit-card__icon {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.05);
+  border-radius: 8px;
+  color: rgba(255,255,255,0.9);
+}
+
+.benefit-card--primary .benefit-card__icon {
+  background: rgba(94,234,212,0.16);
+  color: #5EEAD4;
+}
+
+.benefit-card__text {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin-bottom: 32px;
-  width: 100%;
-  max-width: 320px;
+  gap: 1px;
+  min-width: 0;
 }
 
-.benefit-item {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 16px;
-  background: var(--onyx-card);
-  border: 1px solid var(--onyx-border);
-  border-radius: 12px;
+.benefit-card__title {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
 }
 
-.benefit-icon {
-  font-size: 24px;
-}
-
-.benefit-text {
-  font-size: 15px;
-  font-weight: 500;
-}
-
-.welcome-trial-card {
-  background: var(--onyx-card);
-  border: 1px solid var(--onyx-border);
-  border-radius: 16px;
-  padding: 20px;
-  margin-bottom: 20px;
-  width: 100%;
-  max-width: 320px;
-}
-
-.trial-feature {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 0;
-  font-size: 14px;
-}
-
-.trial-feature svg {
-  flex-shrink: 0;
-  color: var(--onyx-success);
-}
-
-.welcome-social-proof {
-  font-size: 13px;
+.benefit-card__hint {
+  font-size: 10px;
   color: var(--onyx-text-muted);
-  text-align: center;
-  margin-bottom: 24px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Trial card — premium-обёртка с шиммером, бейджем, прогрессом */
+.welcome-trial-card {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(94,234,212,0.07) 0%, rgba(14,165,233,0.03) 50%, rgba(255,255,255,0.02) 100%);
+  border: 1px solid rgba(94,234,212,0.18);
+  border-radius: 18px;
+  padding: 20px;
+  margin-bottom: 18px;
+  width: 100%;
+  max-width: 360px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.28);
+}
+
+.welcome-trial-card__shimmer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(105deg, transparent 38%, rgba(94,234,212,0.14) 50%, transparent 62%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.welcome-trial-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  position: relative;
+  z-index: 1;
+}
+
+.welcome-trial-card__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px 5px 8px;
+  background: rgba(94,234,212,0.14);
+  border: 1px solid rgba(94,234,212,0.3);
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #5EEAD4;
+}
+
+.welcome-trial-card__price {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.welcome-trial-card__price-old {
+  font-size: 12px;
+  color: var(--onyx-text-muted);
+  text-decoration: line-through;
+  text-decoration-color: rgba(244,63,94,0.7);
+  text-decoration-thickness: 1.5px;
+}
+
+.welcome-trial-card__price-new {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--onyx-white);
+  letter-spacing: -0.02em;
+}
+
+.welcome-trial-card__list {
+  list-style: none;
+  margin: 0 0 16px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+  z-index: 1;
+}
+
+.welcome-trial-card__feature {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--onyx-text);
+  line-height: 1.3;
+}
+
+.welcome-trial-card__feature svg {
+  flex-shrink: 0;
+  color: #5EEAD4;
+}
+
+.welcome-trial-card__progress {
+  position: relative;
+  height: 3px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.welcome-trial-card__progress-bar {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #5EEAD4 0%, #38BDF8 100%);
+  border-radius: 2px;
+  box-shadow: 0 0 8px rgba(94,234,212,0.5);
+}
+
+/* Social proof с "живым" пульсом — ощущение активной аудитории */
+.welcome-social-proof {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 100px;
+  font-size: 11px;
+  color: var(--onyx-text-muted);
+  letter-spacing: 0.01em;
+  margin-bottom: 14px;
+}
+
+.welcome-social-proof strong {
+  color: var(--onyx-text);
+  font-weight: 600;
+}
+
+.welcome-social-proof__pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10B981;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.welcome-social-proof__pulse::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: #10B981;
+  animation: socialPulse 1.8s ease-out infinite;
+}
+
+@keyframes socialPulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+/* Тонкая подсказка к MainButton — анимированная стрелка вниз */
+.welcome-hint {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--onyx-text-muted);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+.welcome-hint svg {
+  color: var(--onyx-text-muted);
+  opacity: 0.7;
 }
 
 .welcome-cta {
   width: 100%;
-  max-width: 320px;
+  max-width: 340px;
   padding: 18px;
   background: var(--onyx-white);
   color: var(--onyx-bg);
@@ -263,6 +634,7 @@ body {
   font-weight: 600;
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-ios);
+  box-shadow: 0 4px 20px rgba(255,255,255,0.08);
 }
 
 .welcome-cta:hover {
@@ -274,24 +646,113 @@ body {
 }
 
 /* Install Screen */
+.install-screen {
+  padding-top: 32px;
+}
+
+/* Прогресс-индикатор шагов: ●─●─○ */
+.install-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-bottom: 28px;
+}
+
+.install-steps__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.install-steps__dot--active {
+  background: #A78BFA;
+  box-shadow: 0 0 0 4px rgba(94,234,212,0.18);
+  transform: scale(1.15);
+}
+
+.install-steps__dot--done {
+  background: rgba(94,234,212,0.5);
+}
+
+.install-steps__line {
+  width: 28px;
+  height: 1.5px;
+  background: rgba(255,255,255,0.1);
+  margin: 0 6px;
+  transition: background 0.3s ease;
+}
+
+.install-steps__line--done {
+  background: rgba(94,234,212,0.4);
+}
+
 .install-logo {
+  position: relative;
   margin-bottom: 32px;
+  width: 100px;
+  height: 100px;
+}
+
+/* Пульсирующие кольца вокруг логотипа — "ищем устройство" */
+.install-logo__pulse {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.install-logo__pulse-ring {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 1.5px solid rgba(94,234,212,0.35);
+  animation: installPulse 2.4s ease-out infinite;
+}
+
+.install-logo__pulse-ring--delay {
+  animation-delay: 1.2s;
+}
+
+@keyframes installPulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
 }
 
 .install-title {
   font-size: 28px;
   font-weight: 700;
   margin-bottom: 12px;
+  margin-left: auto;
+  margin-right: auto;
   text-align: center;
+  width: 100%;
+  max-width: 340px;
+  letter-spacing: -0.02em;
 }
 
 .install-description {
   font-size: 15px;
   color: var(--onyx-text-muted);
   text-align: center;
-  margin-bottom: 32px;
-  max-width: 300px;
-  line-height: 1.5;
+  margin-bottom: 28px;
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 340px;
+  width: 100%;
+  line-height: 1.55;
 }
 
 .platform-cards {
@@ -299,34 +760,98 @@ body {
   flex-direction: column;
   gap: 12px;
   width: 100%;
-  max-width: 320px;
-  margin-bottom: 32px;
+  max-width: 360px;
+  margin-bottom: 24px;
 }
 
 .platform-card {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px;
-  background: var(--onyx-card);
-  border: 1px solid var(--onyx-border);
+  gap: 14px;
+  padding: 14px 14px 14px 16px;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.07);
   border-radius: 14px;
   text-decoration: none;
   color: var(--onyx-text);
-  transition: all var(--duration-fast) var(--ease-ios);
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Gradient sheen on hover */
+.platform-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(94,234,212,0.05) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
 }
 
 .platform-card:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(94,234,212,0.3);
+  background: rgba(255,255,255,0.04);
+}
+
+.platform-card:hover::before {
+  opacity: 1;
 }
 
 .platform-card:active {
   transform: scale(0.98);
 }
 
+/* Сброс дефолтных стилей <button> для platform-card,
+   чтобы они визуально соответствовали прежним <a>-обёрткам. */
+.platform-card-button {
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  appearance: none;
+}
+
+.platform-card__icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.05);
+  border-radius: 10px;
+  color: var(--onyx-text);
+}
+
+.platform-card:hover .platform-card__icon {
+  background: rgba(94,234,212,0.15);
+  color: #5EEAD4;
+}
+
+.platform-card__arrow {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--onyx-text-muted);
+  opacity: 0.5;
+  transition: all 0.3s ease;
+}
+
+.platform-card:hover .platform-card__arrow {
+  color: #5EEAD4;
+  opacity: 1;
+  transform: translate(2px, -2px);
+}
+
 .platform-info {
   flex: 1;
+  min-width: 0;
 }
 
 .platform-label {
@@ -338,6 +863,25 @@ body {
 .platform-name {
   font-size: 16px;
   font-weight: 600;
+}
+
+/* Предупреждение о выборе правильного приложения */
+.install-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(245,158,11,0.08);
+  border: 1px solid rgba(245,158,11,0.2);
+  border-radius: 10px;
+  font-size: 12px;
+  color: rgba(245,158,11,0.95);
+  max-width: 340px;
+  line-height: 1.4;
+}
+
+.install-hint svg {
+  flex-shrink: 0;
 }
 
 .install-cta {
@@ -409,7 +953,12 @@ body {
   font-size: 24px;
   font-weight: 700;
   margin-bottom: 12px;
+  margin-left: auto;
+  margin-right: auto;
   text-align: center;
+  width: 100%;
+  max-width: 340px;
+  letter-spacing: -0.01em;
 }
 
 .preparing-subtitle {
@@ -417,7 +966,12 @@ body {
   color: var(--onyx-text-muted);
   text-align: center;
   margin-bottom: 32px;
+  margin-left: auto;
+  margin-right: auto;
   min-height: 24px;
+  width: 100%;
+  max-width: 340px;
+  line-height: 1.5;
 }
 
 .preparing-cta {
@@ -447,45 +1001,81 @@ body {
   font-size: 28px;
   font-weight: 700;
   margin-bottom: 24px;
+  margin-left: auto;
+  margin-right: auto;
   text-align: center;
+  width: 100%;
+  max-width: 340px;
+  letter-spacing: -0.02em;
 }
 
 .connect-steps {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 0;
   margin-bottom: 32px;
   width: 100%;
-  max-width: 320px;
+  max-width: 340px;
+  position: relative;
 }
 
 .connect-step {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px;
-  background: var(--onyx-card);
-  border: 1px solid var(--onyx-border);
-  border-radius: 12px;
+  gap: 14px;
+  padding: 14px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--onyx-border);
+  position: relative;
+}
+
+.connect-step:last-child {
+  border-bottom: none;
+}
+
+.connect-step:first-child {
+  background: linear-gradient(90deg, rgba(255,255,255,0.03) 0%, transparent 100%);
+  border-radius: 12px 12px 0 0;
 }
 
 .step-number {
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--onyx-white);
-  color: var(--onyx-bg);
+  background: transparent;
+  color: var(--onyx-text);
+  border: 1.5px solid var(--onyx-text-muted);
   border-radius: 50%;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: -apple-system, sans-serif;
   flex-shrink: 0;
 }
 
 .step-text {
   font-size: 15px;
   font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -0.1px;
+}
+
+.connect-step:first-child .step-text {
+  font-weight: 600;
+}
+
+.connect-step:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 27px;
+  top: 38px;
+  bottom: -1px;
+  width: 1px;
+  background: linear-gradient(180deg, var(--onyx-border) 0%, transparent 100%);
+  pointer-events: none;
 }
 
 .connect-cta {
@@ -694,7 +1284,44 @@ details[open] .help-toggle svg {
 /* Waiting Screen */
 .waiting-animation {
   position: relative;
-  margin-bottom: 32px;
+  width: 160px;
+  height: 160px;
+  margin: 0 auto 32px;
+}
+
+.waiting-cat-wrap {
+  position: relative;
+  width: 160px;
+  height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.waiting-cat-breathing {
+  position: relative;
+  width: 110px;
+  height: 110px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.waiting-cat-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 20px rgba(124, 58, 237, 0.3));
+}
+
+.waiting-progress-ring {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
 }
 
 .waiting-pulse {
@@ -702,12 +1329,13 @@ details[open] .help-toggle svg {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+  z-index: 0;
 }
 
 .pulse-ring {
-  width: 120px;
-  height: 120px;
-  border: 2px solid var(--onyx-success);
+  width: 160px;
+  height: 160px;
+  border: 1px solid rgba(124, 58, 237, 0.25);
   border-radius: 50%;
 }
 
@@ -715,7 +1343,12 @@ details[open] .help-toggle svg {
   font-size: 24px;
   font-weight: 700;
   margin-bottom: 12px;
+  margin-left: auto;
+  margin-right: auto;
   text-align: center;
+  width: 100%;
+  max-width: 340px;
+  letter-spacing: -0.01em;
 }
 
 .waiting-subtitle {
@@ -723,7 +1356,10 @@ details[open] .help-toggle svg {
   color: var(--onyx-text-muted);
   text-align: center;
   margin-bottom: 32px;
-  max-width: 300px;
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 340px;
+  width: 100%;
   line-height: 1.5;
 }
 
@@ -778,7 +1414,12 @@ details[open] .help-toggle svg {
 /* Success Screen */
 .success-animation {
   position: relative;
-  margin-bottom: 32px;
+  width: 160px;
+  height: 160px;
+  margin: 0 auto 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .success-glow {
@@ -786,17 +1427,43 @@ details[open] .help-toggle svg {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 120px;
-  height: 120px;
-  background: radial-gradient(circle, rgba(16, 185, 129, 0.3) 0%, transparent 70%);
+  width: 180px;
+  height: 180px;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.35) 0%, rgba(124, 58, 237, 0.05) 60%, transparent 80%);
   border-radius: 50%;
+  pointer-events: none;
+}
+
+.success-cat-wrap {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+}
+
+.success-cat-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  filter: drop-shadow(0 10px 30px rgba(124, 58, 237, 0.4));
 }
 
 .success-title {
   font-size: 28px;
   font-weight: 700;
   margin-bottom: 12px;
+  margin-left: auto;
+  margin-right: auto;
   text-align: center;
+  width: 100%;
+  max-width: 340px;
+  letter-spacing: -0.02em;
 }
 
 .success-subtitle {
@@ -804,6 +1471,11 @@ details[open] .help-toggle svg {
   color: var(--onyx-text-muted);
   text-align: center;
   margin-bottom: 32px;
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 340px;
+  width: 100%;
+  line-height: 1.5;
 }
 
 .success-cta {
@@ -1097,9 +1769,45 @@ details[open] .help-toggle svg {
 }
 
 .tariffs-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.tariffs-loading,
+.tariffs-empty {
+  grid-column: 1 / -1;
   display: flex;
   flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 12px;
+  padding: 48px 20px;
+  background: var(--onyx-card);
+  border: 1px solid var(--onyx-border);
+  border-radius: 16px;
+}
+
+.tariffs-empty-text {
+  color: var(--onyx-text-muted);
+  font-size: 14px;
+}
+
+.tariffs-retry {
+  padding: 10px 20px;
+  background: var(--onyx-white);
+  color: var(--onyx-bg);
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-ios);
+}
+
+.tariffs-retry:hover {
+  opacity: 0.9;
 }
 
 .tariff-card {
@@ -1108,16 +1816,80 @@ details[open] .help-toggle svg {
   border-radius: 16px;
   padding: 20px;
   position: relative;
-  transition: all var(--duration-fast) var(--ease-ios);
+  display: flex;
+  flex-direction: column;
+  transition: border-color var(--duration-fast) var(--ease-ios),
+              background var(--duration-fast) var(--ease-ios);
 }
 
 .tariff-card:hover {
   border-color: rgba(255, 255, 255, 0.12);
 }
 
+/* Hero: full-width magazine spread across the grid */
 .tariff-card-popular {
-  border-color: var(--onyx-success);
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.03));
+  grid-column: 1 / -1;
+  order: -1;
+  padding: 28px 24px;
+  background:
+    radial-gradient(ellipse 90% 60% at 0% 0%, rgba(16, 185, 129, 0.16) 0%, transparent 55%),
+    radial-gradient(ellipse 70% 50% at 100% 100%, rgba(16, 185, 129, 0.08) 0%, transparent 60%),
+    var(--onyx-card);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  box-shadow:
+    0 12px 40px rgba(16, 185, 129, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.tariff-card-popular::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(16, 185, 129, 0.6) 50%,
+    transparent 100%
+  );
+}
+
+/* Compact: side-by-side companion cards */
+.tariff-card-compact {
+  padding: 18px 16px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.tariff-card-compact .tariff-price-value {
+  font-size: 26px;
+}
+
+.tariff-card-compact .tariff-name {
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.tariff-card-popular .tariff-price-value {
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.tariff-card-popular .tariff-button {
+  margin-top: auto;
+  padding: 16px;
+  font-size: 16px;
+  font-weight: 600;
+  background: var(--onyx-success);
+  color: #ffffff;
+  border-radius: 12px;
+}
+
+.tariff-card-popular .tariff-button:hover:not(:disabled) {
+  background: #0EA372;
 }
 
 .tariff-badge {
@@ -1159,8 +1931,11 @@ details[open] .help-toggle svg {
 }
 
 .tariff-price-value {
-  font-size: 32px;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -0.03em;
 }
 
 .tariff-price-currency {
@@ -1182,6 +1957,7 @@ details[open] .help-toggle svg {
 
 .tariff-button {
   width: 100%;
+  margin-top: auto;
   padding: 14px;
   background: var(--onyx-white);
   color: var(--onyx-bg);
@@ -1248,9 +2024,12 @@ details[open] .help-toggle svg {
 }
 
 .balance-value {
-  font-size: 48px;
-  font-weight: 700;
-  text-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+  font-family: var(--font-display);
+  font-size: 56px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  text-shadow: 0 0 24px rgba(255, 255, 255, 0.15);
 }
 
 .balance-currency {
@@ -1326,12 +2105,12 @@ details[open] .help-toggle svg {
 }
 
 .topup-quick-amounts {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
   gap: 8px;
 }
 
 .topup-quick-button {
+  flex: 1;
   padding: 12px;
   background: var(--onyx-card);
   border: 1px solid var(--onyx-border);
@@ -1343,6 +2122,19 @@ details[open] .help-toggle svg {
   transition: all var(--duration-fast) var(--ease-ios);
 }
 
+.topup-quick-button:first-child {
+  flex: 0.8;
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.topup-quick-button:nth-child(2) {
+  flex: 1.3;
+  border-color: rgba(255, 255, 255, 0.15);
+  background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+  font-weight: 600;
+}
+
 .topup-quick-button:hover {
   background: rgba(255, 255, 255, 0.08);
 }
@@ -1352,9 +2144,10 @@ details[open] .help-toggle svg {
 }
 
 .topup-quick-button-active {
-  background: var(--onyx-white);
-  color: var(--onyx-bg);
-  border-color: var(--onyx-white);
+  background: var(--onyx-white) !important;
+  color: var(--onyx-bg) !important;
+  border-color: var(--onyx-white) !important;
+  opacity: 1 !important;
 }
 
 .topup-button {
@@ -1647,6 +2440,60 @@ details[open] .help-toggle svg {
   transform: scale(0.98);
 }
 
+/* Кот-компаньон внизу профиля — брендовый штрих, не отвлекает от функционала.
+   Картинка + короткая цитата от котика добавляют "душевности" экрану. */
+.profile-cat-companion {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 16px 8px;
+  margin-top: 4px;
+}
+
+.profile-cat-image {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 18px rgba(124, 58, 237, 0.25));
+}
+
+.profile-cat-quote {
+  margin: 0;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--onyx-text-muted);
+  text-align: center;
+  max-width: 260px;
+  line-height: 1.4;
+  opacity: 0.85;
+}
+
+/* Кот-компаньон на экране баланса — декоративный элемент в самом низу,
+   визуально "закрывает" экран тёплым штрихом. */
+.balance-cat-companion {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  padding: 12px 16px 4px;
+  margin-top: -4px;
+}
+
+.balance-cat-image {
+  width: 110px;
+  height: auto;
+  max-height: 110px;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+  opacity: 0.92;
+  filter: drop-shadow(0 6px 20px rgba(124, 58, 237, 0.22));
+}
+
 /* Bottom Sheet */
 .bottom-sheet-overlay {
   position: fixed;
@@ -1676,6 +2523,37 @@ details[open] .help-toggle svg {
   background: rgba(255, 255, 255, 0.2);
   border-radius: 2px;
   margin: 12px auto;
+}
+
+.bottom-sheet-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: none;
+  border-radius: 50%;
+  color: var(--onyx-text-muted);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-ios);
+}
+
+.bottom-sheet-close:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--onyx-white);
+}
+
+.bottom-sheet-close:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.bottom-sheet-close:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .bottom-sheet-content {

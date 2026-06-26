@@ -32,19 +32,19 @@ export function SuccessScreen({ onComplete }: SuccessScreenProps) {
           animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
           transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
         />
-        <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
-          <circle cx="60" cy="60" r="56" stroke="#10B981" strokeWidth="2" fill="none" />
-          <motion.path
-            d="M35 60L50 75L85 40"
-            stroke="#10B981"
-            strokeWidth="4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            initial={{ pathLength: 0 }}
-            animate={{ pathLength: 1 }}
-            transition={{ duration: 0.6, delay: 0.3, ease: [0.32, 0.72, 0, 1] }}
+        <motion.div
+          className="success-cat-wrap"
+          initial={{ scale: 0.6, rotate: -8 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ duration: 0.7, ease: [0.32, 0.72, 0, 1], delay: 0.2 }}
+        >
+          <img
+            src="/cat-success.png"
+            alt="Котик празднует успешное подключение"
+            className="success-cat-image"
+            draggable={false}
           />
-        </svg>
+        </motion.div>
       </motion.div>
 
       <motion.h2

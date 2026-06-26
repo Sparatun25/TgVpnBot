@@ -1,77 +1,110 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { useTelegram } from '../hooks/useTelegram'
-import { useApi } from '../hooks/useApi'
+import { useApi, BackendTariff } from '../hooks/useApi'
 import { TopUpBottomSheet } from './TopUpBottomSheet'
 
-interface Tariff {
+interface TariffMeta {
+  badge?: string
+  popular?: boolean
+  compact?: boolean
+}
+
+// UI-only metadata keyed by tariff id. Prices/days come from backend.
+const TARIFF_META: Record<string, TariffMeta> = {
+  year: { badge: 'Лучшее предложение', popular: true },
+  quarter: { compact: true },
+  monthly: { compact: true },
+}
+
+interface Tariff extends TariffMeta {
   id: string
   name: string
   price: number
   monthlyPrice?: number
   savings?: number
   period: string
-  badge?: string
-  popular?: boolean
 }
 
-const tariffs: Tariff[] = [
-  {
-    id: 'year',
-    name: 'Год',
-    price: 1490,
-    monthlyPrice: 124,
-    savings: 1498,
-    period: '365 дней',
-    badge: 'Лучшее предложение',
-    popular: true,
-  },
-  {
-    id: 'quarter',
-    name: '3 месяца',
-    price: 649,
-    monthlyPrice: 216,
-    savings: 98,
-    period: '90 дней',
-  },
-  {
-    id: 'monthly',
-    name: 'Месяц',
-    price: 249,
-    period: '30 дней',
-  },
-]
+const DAYS_IN_MONTH = 30
+
+function enrichTariffs(tariffs: BackendTariff[]): Tariff[] {
+  const monthlyPriceRef = tariffs.find(t => t.id === 'monthly')?.price_rubles ?? 0
+
+  return tariffs.map(t => {
+    const meta = TARIFF_META[t.id] ?? {}
+    const months = t.days / DAYS_IN_MONTH
+    const monthlyPrice = months > 1 ? Math.round(t.price_rubles / months) : undefined
+    const savings = monthlyPriceRef > 0 && months > 1
+      ? Math.round(monthlyPriceRef * months - t.price_rubles)
+      : undefined
+
+    return {
+      id: t.id,
+      name: t.name,
+      price: t.price_rubles,
+      monthlyPrice,
+      savings: savings && savings > 0 ? savings : undefined,
+      period: `${t.days} дней`,
+      ...meta,
+    }
+  })
+}
 
 interface TariffsScreenProps {
   balance: number
+  autoPlanId?: string | null
+  onAutoPlanConsumed?: () => void
+  // Колбэк после успешной покупки: родитель перезагрузит профиль и переключит
+  // экран на дашборд. Это лучше, чем window.location.reload() — не теряем
+  // стек состояний, нет вспышки полной перезагрузки страницы.
+  onPurchaseComplete?: () => void
 }
 
-export function TariffsScreen({ balance }: TariffsScreenProps) {
+export function TariffsScreen({
+  balance,
+  autoPlanId,
+  onAutoPlanConsumed,
+  onPurchaseComplete,
+}: TariffsScreenProps) {
   const { tg, getInitData } = useTelegram()
-  const { purchaseSubscription } = useApi(getInitData)
+  const { purchaseSubscription, getTariffs } = useApi(getInitData)
+  const [tariffs, setTariffs] = useState<Tariff[]>([])
+  const [tariffsLoading, setTariffsLoading] = useState(true)
   const [purchasing, setPurchasing] = useState<string | null>(null)
+  const [purchaseError, setPurchaseError] = useState<string | null>(null)
   const [showTopUp, setShowTopUp] = useState(false)
   const [requiredAmount, setRequiredAmount] = useState(0)
+  const handledAutoPlanRef = useRef<string | null>(null)
+  const isMountedRef = useRef(true)
 
-  // Handle deep link from bot (e.g., ?plan=year)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const plan = params.get('plan')
-
-    if (plan) {
-      const tariff = tariffs.find(t => t.id === plan)
-      if (tariff) {
-        // Auto-trigger purchase for this tariff
-        handleBuy(tariff)
-      }
-
-      // Clean up URL param
-      const newUrl = window.location.pathname
-      window.history.replaceState({}, '', newUrl)
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
     }
   }, [])
 
-  const handleBuy = async (tariff: Tariff) => {
+  const loadTariffs = useCallback(() => {
+    const controller = new AbortController()
+    setTariffsLoading(true)
+    setPurchaseError(null)
+    getTariffs(controller.signal).then((data) => {
+      if (controller.signal.aborted || !isMountedRef.current) return
+      if (data) {
+        setTariffs(enrichTariffs(data))
+      }
+      setTariffsLoading(false)
+    })
+    return () => controller.abort()
+  }, [getTariffs])
+
+  useEffect(() => {
+    const cleanup = loadTariffs()
+    return cleanup
+  }, [loadTariffs])
+
+  const handleBuy = useCallback(async (tariff: Tariff) => {
     tg?.HapticFeedback?.impactOccurred('light')
 
     if (balance < tariff.price * 100) {
@@ -80,18 +113,43 @@ export function TariffsScreen({ balance }: TariffsScreenProps) {
       return
     }
 
+    setPurchaseError(null)
     setPurchasing(tariff.id)
     const result = await purchaseSubscription(tariff.id)
+
+    if (!isMountedRef.current) return
+
     setPurchasing(null)
 
     if (result) {
       tg?.HapticFeedback?.notificationOccurred('success')
-      window.location.reload()
+      // Передаём управление родителю: он перезагрузит профиль и переключит
+      // экран. Никакого window.location.reload() — иначе теряется стек
+      // анимаций/состояний и мигает вся страница.
+      onPurchaseComplete?.()
+    } else {
+      tg?.HapticFeedback?.notificationOccurred('error')
+      setPurchaseError('Не удалось купить подписку. Попробуйте ещё раз.')
     }
-  }
+  }, [balance, purchaseSubscription, tg, onPurchaseComplete])
+
+  // Auto-buy from deep link (after tariffs + profile are loaded).
+  useEffect(() => {
+    if (!autoPlanId || handledAutoPlanRef.current === autoPlanId) return
+    if (tariffsLoading || tariffs.length === 0) return
+
+    const tariff = tariffs.find(t => t.id === autoPlanId)
+    handledAutoPlanRef.current = autoPlanId
+    if (tariff) {
+      handleBuy(tariff)
+    }
+    onAutoPlanConsumed?.()
+  }, [autoPlanId, balance, tariffsLoading, tariffs, handleBuy, onAutoPlanConsumed])
 
   const handlePaymentSuccess = () => {
-    window.location.reload()
+    // Родитель сам перезагрузит профиль и оставит юзера на экране тарифов,
+    // чтобы он мог повторить покупку уже с пополненным балансом.
+    onPurchaseComplete?.()
   }
 
   return (
@@ -137,10 +195,43 @@ export function TariffsScreen({ balance }: TariffsScreenProps) {
       </motion.div>
 
       <div className="tariffs-grid">
+        {tariffsLoading && (
+          <div className="tariffs-loading">
+            <div className="loading-spinner" />
+            <div className="loading-text">Загрузка тарифов...</div>
+          </div>
+        )}
+        {!tariffsLoading && tariffs.length === 0 && (
+          <div className="tariffs-empty">
+            <div className="tariffs-empty-text">Не удалось загрузить тарифы</div>
+            <button className="tariffs-retry" onClick={loadTariffs}>
+              Повторить
+            </button>
+          </div>
+        )}
+
+        {purchaseError && (
+          <motion.div
+            className="tariffs-purchase-error"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            role="alert"
+          >
+            <span>{purchaseError}</span>
+            <button
+              className="tariffs-purchase-error-dismiss"
+              onClick={() => setPurchaseError(null)}
+              aria-label="Закрыть ошибку"
+            >
+              ×
+            </button>
+          </motion.div>
+        )}
         {tariffs.map((tariff, index) => (
           <motion.div
             key={tariff.id}
-            className={`tariff-card ${tariff.popular ? 'tariff-card-popular' : ''}`}
+            className={`tariff-card ${tariff.popular ? 'tariff-card-popular' : ''} ${tariff.compact ? 'tariff-card-compact' : ''}`}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.2 + index * 0.1 }}
@@ -160,7 +251,7 @@ export function TariffsScreen({ balance }: TariffsScreenProps) {
               {tariff.monthlyPrice && (
                 <div className="tariff-monthly">{tariff.monthlyPrice} ₽ / месяц</div>
               )}
-              {tariff.savings && (
+              {tariff.savings && tariff.savings > 0 && (
                 <div className="tariff-savings">Экономия {tariff.savings} ₽</div>
               )}
             </div>

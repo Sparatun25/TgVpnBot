@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from core.db import async_session_factory
-from database.models import User
+from database.models import PlanType, Subscription, User
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,10 @@ async def cmd_start(message: Message, command: CommandStart) -> None:
         query = select(User).where(User.tg_id == tg_id)
         result = await session.execute(query)
         user = result.scalar_one_or_none()
+
+        # Для новых пользователей has_used_trial всегда False;
+        # для существующих — перезаписывается ниже в else-ветке.
+        has_used_trial = False
 
         if not user:
             # Новый пользователь — создаём запись
@@ -94,29 +98,88 @@ async def cmd_start(message: Message, command: CommandStart) -> None:
             logger.info("Создан новый пользователь: tg_id=%s", tg_id)
 
         else:
-            logger.info("Существующий пользователь: tg_id=%s", tg_id)
-
-    # Формируем приветственное сообщение
-    welcome_text = (
-        f"{hbold('✨ Добро пожаловать в OnyxVpn!')}\n\n"
-        f"{hitalic('Премиальный VPN для свободного интернета.')}\n\n"
-        f"🔐 Безопасность и анонимность\n"
-        f"⚡ Высокая скорость подключения\n"
-        f"🎁 3 дня бесплатного доступа\n\n"
-        f"Нажмите кнопку ниже, чтобы открыть приложение и активировать VPN."
-    )
-
-    # Создаём inline-кнопку с WebAppInfo
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🚀 Открыть OnyxVpn",
-                    web_app={"url": settings.webapp_url},
+            # Проверяем, был ли у пользователя триал — определяет, какое приветствие показать.
+            # Возвращающиеся юзеры с истёкшим триалом не должны видеть first-time копирайт
+            # с кнопкой «3 дня бесплатно», как будто они тут впервые.
+            # LIMIT 1 — нам нужен только факт наличия, не список подписок.
+            trial_query = (
+                select(Subscription.id)
+                .where(
+                    Subscription.user_id == user.id,
+                    Subscription.plan_type == PlanType.TRIAL,
                 )
-            ]
-        ]
-    )
+                .limit(1)
+            )
+            trial_result = await session.execute(trial_query)
+            has_used_trial = trial_result.scalar_one_or_none() is not None
+
+            logger.info(
+                "Существующий пользователь: tg_id=%s, has_used_trial=%s",
+                tg_id,
+                has_used_trial,
+            )
+
+    # Берём first_name для персонализации
+    first_name = (message.from_user.first_name or "").strip()
+    greeting = f", {hbold(first_name)}" if first_name else ""
+
+    # «Новый» = не пришёл по рефералу И ни разу не активировал триал.
+    # Раньше проверяли `user.balance == 0`, но это ломало кейс: юзер с
+    # истёкшим триалом, без реферера и без денег на балансе получал
+    # first-time приветствие с «3 дня бесплатно» как в свой первый визит.
+    is_new_user = user.referred_by_id is None and not has_used_trial
+
+    if is_new_user:
+        # Полное приветствие для нового пользователя.
+        # Структура: hook → ценность → CTA. Кот-талисман = наш бренд.
+        welcome_text = (
+            f"🐈‍⬛ {hbold('Onyx VPN')} — кот-защитник вашего интернета\n\n"
+            f"Привет{greeting}! Я {hitalic('Onyx')} — VPN на&nbsp;AmneziaWG, "
+            f"который реально обходит DPI и&nbsp;не&nbsp;ведёт логов.\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{hbold('Что внутри')}\n\n"
+            f"🔒 Шифрование AmneziaWG — обходит глубокий DPI\n"
+            f"⚡️ Скорость до&nbsp;1&nbsp;Гбит/с без потерь\n"
+            f"🌍 Серверы в&nbsp;Европе и&nbsp;Азии\n"
+            f"🛡 Строгая политика no-logs\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🎁 {hbold('3 дня бесплатно')} — без карты и&nbsp;смс.\n\n"
+            f"Жмите кнопку ниже — заберёте персональный ключ за&nbsp;минуту."
+        )
+    else:
+        # Короткое приветствие для возврата. Не грузим повторно onboarding-копирайт.
+        welcome_text = (
+            f"🐈‍⬛ С возвращением в&nbsp;{hbold('Onyx VPN')}{greeting}!\n\n"
+            f"Ваш защищённый канал ждёт. Если триал закончился — "
+            f"в&nbsp;приложении есть тарифы от&nbsp;99&nbsp;₽/мес."
+        )
+
+    # Кнопки: основная (открыть Mini App) + дополнительная (поделиться).
+    # Реферальная ссылка помогает виральному росту — пользователь видит,
+    # что может позвать друзей и получить бонус.
+    bot_username = (await message.bot.get_me()).username
+    referral_code = user.referral_code
+    share_url = f"https://t.me/{bot_username}?start=ref_{tg_id}"
+
+    buttons_row = [
+        InlineKeyboardButton(
+            text="🚀 Открыть Onyx VPN",
+            web_app={"url": settings.webapp_url},
+        )
+    ]
+
+    # Вторая кнопка только если есть что показать и это новый пользователь
+    # (возвращающиеся уже знают про рефералку).
+    if is_new_user and bot_username:
+        buttons_row.append(
+            InlineKeyboardButton(
+                text="🎁 Пригласить друга",
+                url=f"https://t.me/share/url?url={share_url}&text="
+                    f"Попробуй Onyx VPN — 3 дня бесплатно без карты",
+            )
+        )
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons_row])
 
     await message.answer(
         welcome_text,

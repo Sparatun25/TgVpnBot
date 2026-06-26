@@ -3,14 +3,20 @@ import { motion } from 'framer-motion'
 import { useTelegram } from '../../hooks/useTelegram'
 
 interface WaitingScreenProps {
-  connectionUrl: string
   onActivated: () => void
 }
+
+// Общий таймаут ожидания активации. После него polling останавливается
+// и юзеру показывается кнопка «Продолжить вручную» — защита от бесконечного спиннера,
+// если бэкенд по какой-то причине не подтвердил активацию (например, ключ
+// уже создан, но первый пакет через VPN ещё не прошёл).
+const OVERALL_TIMEOUT_SECONDS = 300
 
 export function WaitingScreen({ onActivated }: WaitingScreenProps) {
   const { tg } = useTelegram()
   const [elapsed, setElapsed] = useState(0)
   const [showHelp, setShowHelp] = useState(false)
+  const [timedOut, setTimedOut] = useState(false)
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -21,38 +27,64 @@ export function WaitingScreen({ onActivated }: WaitingScreenProps) {
   }, [])
 
   useEffect(() => {
-    if (elapsed >= 45) {
+    if (elapsed >= 45 && !showHelp) {
       setShowHelp(true)
       tg?.HapticFeedback?.notificationOccurred('warning')
     }
-  }, [elapsed, tg])
+    if (elapsed >= OVERALL_TIMEOUT_SECONDS && !timedOut) {
+      setTimedOut(true)
+      tg?.HapticFeedback?.notificationOccurred('warning')
+    }
+  }, [elapsed, showHelp, timedOut, tg])
 
   useEffect(() => {
+    if (timedOut) return
+
+    const POLL_INTERVAL_MS = 3000
+    const REQUEST_TIMEOUT_MS = 8000
+
     const checkActivation = async () => {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
       try {
         const response = await fetch('/api/subscription/status', {
           headers: {
             'Authorization': `Bearer ${window.Telegram?.WebApp?.initData || ''}`,
           },
+          signal: controller.signal,
         })
+        clearTimeout(timeoutId)
         if (response.ok) {
           const data = await response.json()
-          if (data.active && data.traffic_detected) {
+          if (data.active && data.auto_advance_eligible) {
             onActivated()
           }
         }
       } catch {
-        // Ignore errors
+        clearTimeout(timeoutId)
       }
     }
 
-    const pollInterval = setInterval(checkActivation, 3000)
+    const pollInterval = setInterval(checkActivation, POLL_INTERVAL_MS)
     return () => clearInterval(pollInterval)
-  }, [onActivated])
+  }, [onActivated, timedOut])
+
+  const handleSkip = () => {
+    tg?.HapticFeedback?.impactOccurred('light')
+    onActivated()
+  }
 
   const handleHelp = () => {
     tg?.HapticFeedback?.impactOccurred('light')
-    window.open('https://t.me/OnyxVpnSupport', '_blank')
+    // Открываем Telegram-чат поддержки через tg.openTelegramLink,
+    // чтобы он открывался внутри Telegram, а не в системном браузере.
+    if (tg?.openTelegramLink) {
+      tg.openTelegramLink('https://t.me/OnyxVpnSupport')
+    } else if (tg?.openLink) {
+      tg.openLink('https://t.me/OnyxVpnSupport')
+    } else {
+      window.open('https://t.me/OnyxVpnSupport', '_blank', 'noopener,noreferrer')
+    }
   }
 
   const progress = Math.min((elapsed / 45) * 100, 100)
@@ -71,28 +103,57 @@ export function WaitingScreen({ onActivated }: WaitingScreenProps) {
         animate={{ scale: 1 }}
         transition={{ duration: 0.6, ease: [0.32, 0.72, 0, 1] }}
       >
-        <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
-          <circle cx="60" cy="60" r="56" stroke="rgba(255,255,255,0.1)" strokeWidth="2" fill="none" />
-          <motion.circle
-            cx="60"
-            cy="60"
-            r="56"
-            stroke="url(#waiting-gradient)"
-            strokeWidth="2"
+        <div className="waiting-cat-wrap">
+          <motion.div
+            className="waiting-cat-breathing"
+            animate={{ scale: [1, 1.04, 1] }}
+            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <img
+              src="/cat-waiting.png"
+              alt="Котик ждёт подключения"
+              className="waiting-cat-image"
+              draggable={false}
+            />
+          </motion.div>
+          <svg
+            className="waiting-progress-ring"
+            width="160"
+            height="160"
+            viewBox="0 0 160 160"
             fill="none"
-            strokeLinecap="round"
-            strokeDasharray="352"
-            initial={{ strokeDashoffset: 352 }}
-            animate={{ strokeDashoffset: 352 - (352 * progress) / 100 }}
-            transition={{ duration: 0.5 }}
-          />
-          <defs>
-            <linearGradient id="waiting-gradient" x1="0" y1="0" x2="120" y2="120">
-              <stop stopColor="#10B981" />
-              <stop offset="1" stopColor="#059669" />
-            </linearGradient>
-          </defs>
-        </svg>
+            aria-hidden="true"
+          >
+            <circle
+              cx="80"
+              cy="80"
+              r="74"
+              stroke="rgba(255,255,255,0.08)"
+              strokeWidth="2"
+              fill="none"
+            />
+            <motion.circle
+              cx="80"
+              cy="80"
+              r="74"
+              stroke="url(#waiting-gradient)"
+              strokeWidth="2.5"
+              fill="none"
+              strokeLinecap="round"
+              strokeDasharray="464"
+              initial={{ strokeDashoffset: 464 }}
+              animate={{ strokeDashoffset: 464 - (464 * progress) / 100 }}
+              transition={{ duration: 0.5 }}
+              style={{ rotate: -90, transformOrigin: '80px 80px' }}
+            />
+            <defs>
+              <linearGradient id="waiting-gradient" x1="0" y1="0" x2="160" y2="160">
+                <stop stopColor="#A78BFA" />
+                <stop offset="1" stopColor="#7C3AED" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
         <div className="waiting-pulse">
           <motion.div
             className="pulse-ring"
@@ -147,6 +208,19 @@ export function WaitingScreen({ onActivated }: WaitingScreenProps) {
           whileTap={{ scale: 0.96 }}
         >
           Помощь при подключении
+        </motion.button>
+      )}
+
+      {timedOut && (
+        <motion.button
+          className="waiting-skip"
+          onClick={handleSkip}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          whileTap={{ scale: 0.96 }}
+        >
+          Продолжить вручную
         </motion.button>
       )}
     </motion.div>

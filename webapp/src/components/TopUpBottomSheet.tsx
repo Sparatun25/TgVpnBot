@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTelegram } from '../hooks/useTelegram'
 import { useApi } from '../hooks/useApi'
@@ -10,6 +10,11 @@ interface TopUpBottomSheetProps {
   onPaymentSuccess: () => void
 }
 
+const POLL_INTERVAL_MS = 2000
+const POLL_TIMEOUT_MS = 120000
+const FETCH_TIMEOUT_MS = 8000
+const SUCCESS_DISMISS_MS = 1500
+
 export function TopUpBottomSheet({
   isOpen,
   onClose,
@@ -19,9 +24,23 @@ export function TopUpBottomSheet({
   const { tg, getInitData } = useTelegram()
   const { createPayment } = useApi(getInitData)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'success'>('idle')
+  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'pending' | 'success' | 'timeout'>('idle')
 
   const deficit = requiredAmount
+  // Refs for cleanup so async callbacks don't fire on unmounted components.
+  const isMountedRef = useRef(true)
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      if (successTimerRef.current) {
+        clearTimeout(successTimerRef.current)
+        successTimerRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (!isOpen) {
@@ -30,41 +49,70 @@ export function TopUpBottomSheet({
     }
   }, [isOpen])
 
+  // Esc closes the sheet unless payment creation is in flight.
+  useEffect(() => {
+    if (!isOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isProcessing) {
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isOpen, isProcessing, onClose])
+
   useEffect(() => {
     if (paymentStatus !== 'pending') return
 
+    let cancelled = false
+
     const pollPaymentStatus = async () => {
+      const fetchController = new AbortController()
+      const timeoutId = setTimeout(() => fetchController.abort(), FETCH_TIMEOUT_MS)
       try {
         const response = await fetch('/api/payment/status', {
           headers: {
             'Authorization': `Bearer ${getInitData()}`,
           },
+          signal: fetchController.signal,
         })
+        clearTimeout(timeoutId)
 
-        if (response.ok) {
-          const data = await response.json()
-          if (data.status === 'succeeded') {
-            setPaymentStatus('success')
-            tg?.HapticFeedback?.notificationOccurred('success')
-            setTimeout(() => {
-              onPaymentSuccess()
-              onClose()
-            }, 1500)
-          }
+        if (!response.ok) return
+        const data = await response.json()
+        if (cancelled || !isMountedRef.current) return
+
+        if (data.status === 'succeeded') {
+          setPaymentStatus('success')
+          tg?.HapticFeedback?.notificationOccurred('success')
+          successTimerRef.current = setTimeout(() => {
+            successTimerRef.current = null
+            if (!isMountedRef.current) return
+            onPaymentSuccess()
+            onClose()
+          }, SUCCESS_DISMISS_MS)
         }
       } catch {
-        // Ignore errors
+        clearTimeout(timeoutId)
       }
     }
 
-    const interval = setInterval(pollPaymentStatus, 2000)
-    const timeout = setTimeout(() => {
+    const interval = setInterval(pollPaymentStatus, POLL_INTERVAL_MS)
+    const overallTimeout = setTimeout(() => {
+      cancelled = true
       clearInterval(interval)
-    }, 120000)
+      // Polling провисел POLL_TIMEOUT_MS без успеха — переводим в timeout,
+      // иначе юзер будет бесконечно смотреть на спиннер внутри модалки.
+      if (isMountedRef.current && paymentStatus === 'pending') {
+        setPaymentStatus('timeout')
+        tg?.HapticFeedback?.notificationOccurred('error')
+      }
+    }, POLL_TIMEOUT_MS)
 
     return () => {
+      cancelled = true
       clearInterval(interval)
-      clearTimeout(timeout)
+      clearTimeout(overallTimeout)
     }
   }, [paymentStatus, getInitData, tg, onPaymentSuccess, onClose])
 
@@ -75,8 +123,11 @@ export function TopUpBottomSheet({
     const amountKopecks = deficit * 100
     const paymentData = await createPayment(amountKopecks)
 
+    if (!isMountedRef.current) return
+
     if (paymentData && paymentData.payment_url) {
       setPaymentStatus('pending')
+      setIsProcessing(false)
       window.open(paymentData.payment_url, '_blank')
     } else {
       setIsProcessing(false)
@@ -84,10 +135,21 @@ export function TopUpBottomSheet({
     }
   }
 
-  const handleClose = () => {
+  // Повторный запуск polling после таймаута.
+  const handleRetryPending = () => {
+    tg?.HapticFeedback?.impactOccurred('light')
+    setPaymentStatus('pending')
+  }
+
+  // Close is allowed once the payment-creation request finishes.
+  // While isProcessing is true, the user must wait for the request to resolve
+  // so they don't lose track of a payment that may have been created.
+  const canClose = !isProcessing
+  const handleClose = useCallback(() => {
+    if (!canClose) return
     tg?.HapticFeedback?.impactOccurred('light')
     onClose()
-  }
+  }, [canClose, tg, onClose])
 
   return (
     <AnimatePresence>
@@ -100,6 +162,7 @@ export function TopUpBottomSheet({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
             onClick={handleClose}
+            style={{ pointerEvents: canClose ? 'auto' : 'none' }}
           />
           <motion.div
             className="bottom-sheet"
@@ -109,19 +172,34 @@ export function TopUpBottomSheet({
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
             drag="y"
             dragConstraints={{ top: 0, bottom: 0 }}
-            dragElastic={0.2}
+            dragElastic={canClose ? 0.2 : 0}
+            dragListener={canClose}
             onDragEnd={(_, info) => {
-              if (info.offset.y > 100) {
+              if (canClose && info.offset.y > 100) {
                 handleClose()
               }
             }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Пополнение баланса"
           >
             <div className="bottom-sheet-handle" />
+
+            <button
+              className="bottom-sheet-close"
+              onClick={handleClose}
+              disabled={!canClose}
+              aria-label="Закрыть"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M18 6L6 18M6 6L18 18" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
 
             <div className="bottom-sheet-content">
               <h3 className="bottom-sheet-title">Недостаточно средств</h3>
               <p className="bottom-sheet-subtitle">
-                Дл�� покупки не хватает {deficit} ₽. Пополнить баланс через СБП?
+                Для покупки не хватает {deficit} ₽. Пополнить баланс через СБП?
               </p>
 
               {paymentStatus === 'pending' && (
@@ -133,6 +211,33 @@ export function TopUpBottomSheet({
                 >
                   <div className="pending-spinner" />
                   <span>Ожидание подтверждения оплаты...</span>
+                  <button
+                    className="payment-pending-cancel"
+                    onClick={handleClose}
+                    aria-label="Отменить ожидание оплаты"
+                  >
+                    Отменить
+                  </button>
+                </motion.div>
+              )}
+
+              {paymentStatus === 'timeout' && (
+                <motion.div
+                  className="payment-timeout"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                  role="alert"
+                >
+                  <span>Время ожидания истекло. Если оплата прошла, попробуйте ещё раз.</span>
+                  <div className="payment-timeout-actions">
+                    <button
+                      className="payment-timeout-retry"
+                      onClick={handleRetryPending}
+                    >
+                      Повторить
+                    </button>
+                  </div>
                 </motion.div>
               )}
 
@@ -165,7 +270,7 @@ export function TopUpBottomSheet({
               <button
                 className="bottom-sheet-cancel"
                 onClick={handleClose}
-                disabled={isProcessing}
+                disabled={!canClose}
               >
                 Отмена
               </button>

@@ -5,6 +5,8 @@ import { useTelegram } from '../../hooks/useTelegram'
 interface PreparingScreenProps {
   onComplete: () => void
   onBack: () => void
+  error?: string | null
+  onRetry?: () => void
 }
 
 const loadingMessages = [
@@ -13,7 +15,7 @@ const loadingMessages = [
   'Почти готово...',
 ]
 
-export function PreparingScreen({ onComplete, onBack }: PreparingScreenProps) {
+export function PreparingScreen({ onComplete, onBack, error, onRetry }: PreparingScreenProps) {
   const { tg } = useTelegram()
   const [messageIndex, setMessageIndex] = useState(0)
   const [isComplete, setIsComplete] = useState(false)
@@ -125,7 +127,7 @@ export function PreparingScreen({ onComplete, onBack }: PreparingScreenProps) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.2 }}
       >
-        {isComplete ? 'VPN-доступ готов' : 'Подготавливаем ваш VPN-доступ'}
+        {error ? 'Не удалось активировать триал' : isComplete ? 'VPN-доступ готов' : 'Подготавливаем ваш VPN-доступ'}
       </motion.h2>
 
       <motion.p
@@ -136,10 +138,23 @@ export function PreparingScreen({ onComplete, onBack }: PreparingScreenProps) {
         exit={{ opacity: 0, y: -5 }}
         transition={{ duration: 0.3 }}
       >
-        {isComplete ? 'Ваш персональный ключ создан' : loadingMessages[messageIndex]}
+        {error ? error : isComplete ? 'Ваш персональный ключ создан' : loadingMessages[messageIndex]}
       </motion.p>
 
-      {isComplete && (
+      {error && (
+        <motion.button
+          className="preparing-cta"
+          onClick={() => onRetry?.()}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.3 }}
+          whileTap={{ scale: 0.96 }}
+        >
+          Попробовать снова
+        </motion.button>
+      )}
+
+      {isComplete && !error && (
         <motion.button
           className="preparing-cta"
           onClick={handleContinue}

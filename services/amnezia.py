@@ -5,13 +5,20 @@ import base64
 import json
 import logging
 import re
-import uuid
+import shlex
+import time
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
+from core.metrics import (
+    docker_exec_duration_seconds,
+    docker_exec_errors_total,
+    vpn_keys_created_total,
+    vpn_keys_revoked_total,
+)
 from database.models import Subscription
 
 logger = logging.getLogger(__name__)
@@ -19,16 +26,48 @@ logger = logging.getLogger(__name__)
 # Таймаут для Docker-команд (секунды)
 DOCKER_TIMEOUT = 30
 
+# Асинхронный лок для сериализации создания ключей.
+# Без него два параллельных запроса могут прочитать один и тот же
+# список used_ips и выдать обоим клиентам одинаковый IP → конфликт в awg0.conf.
+_ip_lock = asyncio.Lock()
+
+# Whitelist путей, которые разрешено читать/писать внутри контейнера.
+# Двойная защита от shell-инъекции: даже если в будущем кто-то начнёт
+# передавать сюда путь из БД / пользовательского ввода, посторонний файл
+# не будет доступен.
+ALLOWED_CONTAINER_PATHS: frozenset[str] = frozenset({
+    "/opt/amnezia/awg/awg0.conf",
+    "/opt/amnezia/awg/clientsTable",
+    "/opt/amnezia/awg/wireguard_psk.key",
+    "/opt/amnezia/awg/wireguard_server_private_key.key",
+    "/opt/amnezia/awg/wireguard_server_public_key.key",
+})
+
+
+def _validate_container_path(path: str) -> None:
+    """Проверить, что путь входит в allowlist. Иначе — ValueError."""
+    if path not in ALLOWED_CONTAINER_PATHS:
+        logger.error("Попытка доступа к запрещённому пути в контейнере: %s", path)
+        raise ValueError(f"Путь {path} не разрешён для операций в контейнере")
+
 
 # ─────────────────────────────────────────────────────────
 # Docker exec helpers
 # ─────────────────────────────────────────────────────────
 
-async def _exec_in_container(command: str) -> tuple[int, str, str]:
+async def _exec_in_container(command: str, command_kind: str = "other") -> tuple[int, str, str]:
     """
     Выполнить команду в контейнере AmneziaWG.
 
     Возвращает (return_code, stdout, stderr).
+
+    Внимание: command передаётся в `sh -c`, поэтому shell-метасимволы
+    интерпретируются. Вызывающие должны строить command только из
+    литералов или предварительно экранировать значения через shlex.quote().
+
+    command_kind — метка для Prometheus: "keygen" | "read" | "write" | "reload".
+    Попадает в label histogram'а docker_exec_duration_seconds и в
+    counter docker_exec_errors_total при инфраструктурных сбоях.
     """
     docker_cmd = [
         "docker", "exec", "-i",
@@ -36,6 +75,9 @@ async def _exec_in_container(command: str) -> tuple[int, str, str]:
         "sh", "-c", command,
     ]
 
+    # Замеряем длительность ВСЕХ попыток — и успешных, и упавших.
+    # Это даёт реальный p95/p99 latency включая timeout-ы и ошибки docker'а.
+    start = time.monotonic()
     try:
         process = await asyncio.create_subprocess_exec(
             *docker_cmd,
@@ -50,52 +92,135 @@ async def _exec_in_container(command: str) -> tuple[int, str, str]:
         stdout = stdout_bytes.decode("utf-8", errors="replace").strip()
         stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
 
+        docker_exec_duration_seconds.labels(command_kind=command_kind).observe(
+            time.monotonic() - start
+        )
         return process.returncode or 0, stdout, stderr
 
     except FileNotFoundError:
         logger.error("Docker не найден в системе")
+        docker_exec_errors_total.labels(error_kind="not_found").inc()
+        docker_exec_duration_seconds.labels(command_kind=command_kind).observe(
+            time.monotonic() - start
+        )
         return 1, "", "Docker executable not found"
 
     except asyncio.TimeoutError:
         logger.error("Таймаут Docker-команды: %s", command)
+        docker_exec_errors_total.labels(error_kind="timeout").inc()
+        docker_exec_duration_seconds.labels(command_kind=command_kind).observe(
+            time.monotonic() - start
+        )
+        # Без явного kill() subprocess остаётся висеть и жрёт ресурсы:
+        # wait_for отменяет await на process.communicate(), но не убивает процесс.
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass  # процесс уже завершился между wait_for и kill
+        try:
+            await process.wait()
+        except Exception:
+            pass
         return 1, "", "Docker command timeout"
 
     except Exception as e:
         logger.exception("Ошибка Docker-команды: %s", e)
+        docker_exec_errors_total.labels(error_kind="runtime").inc()
+        docker_exec_duration_seconds.labels(command_kind=command_kind).observe(
+            time.monotonic() - start
+        )
         return 1, "", str(e)
 
 
 async def _read_container_file(path: str) -> str:
-    """Прочитать файл из контейнера AmneziaWG."""
-    rc, stdout, stderr = await _exec_in_container(f"cat {path}")
+    """Прочитать файл из контейнера AmneziaWG.
+
+    Путь проверяется по allowlist (ALLOWED_CONTAINER_PATHS) и экранируется
+    через shlex.quote — двойная защита от shell-инъекции при формировании
+    `cat <path>` для `sh -c`.
+    """
+    _validate_container_path(path)
+    safe_path = shlex.quote(path)
+    rc, stdout, stderr = await _exec_in_container(f"cat {safe_path}", command_kind="read")
     if rc != 0:
         raise RuntimeError(f"Не удалось прочитать {path}: {stderr}")
     return stdout
 
 
 async def _write_container_file(path: str, content: str) -> None:
-    """Записать файл в контейнер AmneziaWG через stdin."""
+    """Записать файл в контейнер AmneziaWG через stdin.
+
+    Путь проверяется по allowlist и экранируется — даже если в будущем кто-то
+    начнёт передавать сюда путь из БД или пользовательского ввода, инъекция
+    в `cat > <path>` через `sh -c` не пройдёт.
+    """
+    _validate_container_path(path)
+    safe_path = shlex.quote(path)
     docker_cmd = [
         "docker", "exec", "-i",
         settings.amnezia_container_name,
-        "sh", "-c", f"cat > {path}",
+        "sh", "-c", f"cat > {safe_path}",
     ]
 
-    process = await asyncio.create_subprocess_exec(
-        *docker_cmd,
-        stdin=asyncio.subprocess.PIPE,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    # _write_container_file использует свой subprocess_exec (а не _exec_in_container),
+    # потому что нужно прокинуть stdin. Поэтому метрики дублируем здесь вручную —
+    # чтобы histogram/counter были консистентны с read/keygen/reload.
+    start = time.monotonic()
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *docker_cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
 
-    stdout_bytes, stderr_bytes = await asyncio.wait_for(
-        process.communicate(input=content.encode("utf-8")),
-        timeout=DOCKER_TIMEOUT,
-    )
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            process.communicate(input=content.encode("utf-8")),
+            timeout=DOCKER_TIMEOUT,
+        )
 
-    if process.returncode != 0:
-        stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
-        raise RuntimeError(f"Не удалось записать {path}: {stderr}")
+        docker_exec_duration_seconds.labels(command_kind="write").observe(
+            time.monotonic() - start
+        )
+
+        if process.returncode != 0:
+            stderr = stderr_bytes.decode("utf-8", errors="replace").strip()
+            raise RuntimeError(f"Не удалось записать {path}: {stderr}")
+
+    except FileNotFoundError:
+        docker_exec_errors_total.labels(error_kind="not_found").inc()
+        docker_exec_duration_seconds.labels(command_kind="write").observe(
+            time.monotonic() - start
+        )
+        raise
+
+    except asyncio.TimeoutError:
+        docker_exec_errors_total.labels(error_kind="timeout").inc()
+        docker_exec_duration_seconds.labels(command_kind="write").observe(
+            time.monotonic() - start
+        )
+        # Без явного kill() subprocess остаётся висеть и жрёт ресурсы.
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+        try:
+            await process.wait()
+        except Exception:
+            pass
+        raise
+
+    except RuntimeError:
+        # Бизнес-ошибка "файл не записан" (returncode != 0) — это НЕ инфра-сбой,
+        # не ивентим docker_exec_errors_total. Histogram уже записан выше.
+        raise
+
+    except Exception:
+        docker_exec_errors_total.labels(error_kind="runtime").inc()
+        docker_exec_duration_seconds.labels(command_kind="write").observe(
+            time.monotonic() - start
+        )
+        raise
 
 
 # ─────────────────────────────────────────────────────────
@@ -155,7 +280,8 @@ async def _generate_keypair() -> tuple[str, str]:
     rc, stdout, stderr = await _exec_in_container(
         "PRIVATE=$(wg genkey) && "
         "PUBLIC=$(echo $PRIVATE | wg pubkey) && "
-        "echo \"$PRIVATE $PUBLIC\""
+        "echo \"$PRIVATE $PUBLIC\"",
+        command_kind="keygen",
     )
 
     if rc != 0:
@@ -172,7 +298,8 @@ async def _reload_interface() -> None:
     """Перезагрузить интерфейс AmneziaWG (down + up)."""
     rc, _, stderr = await _exec_in_container(
         "awg-quick down /opt/amnezia/awg/awg0.conf 2>/dev/null; "
-        "awg-quick up /opt/amnezia/awg/awg0.conf"
+        "awg-quick up /opt/amnezia/awg/awg0.conf",
+        command_kind="reload",
     )
     if rc != 0:
         logger.error("Не удалось перезагрузить интерфейс: %s", stderr)
@@ -319,7 +446,11 @@ def _build_client_config(
 # Публичный API
 # ─────────────────────────────────────────────────────────
 
-async def create_client_key(user_id: int, is_trial: bool) -> tuple[str, str]:
+async def create_client_key(
+    user_id: int,
+    is_trial: bool,
+    plan_type: str | None = None,
+) -> tuple[str, str]:
     """
     Создать ключ VPN для пользователя.
 
@@ -330,6 +461,9 @@ async def create_client_key(user_id: int, is_trial: bool) -> tuple[str, str]:
     Args:
         user_id: ID пользователя в БД.
         is_trial: Если True — триальный ключ (3 дня).
+        plan_type: Идентификатор тарифа ("monthly" | "quarter" | "year")
+            для метрики. Если None — будет выведен из is_trial
+            ("trial" если True, иначе "unknown").
 
     Returns:
         Кортеж (vpn_url, client_pub_key).
@@ -339,119 +473,224 @@ async def create_client_key(user_id: int, is_trial: bool) -> tuple[str, str]:
     Raises:
         RuntimeError: Если не удалось создать ключ.
     """
-    try:
-        # 1. Генерируем ключи клиента
-        client_priv, client_pub = await _generate_keypair()
+    # Сериализуем весь процесс выдачи ключа через модульный asyncio.Lock.
+    # Без лока два параллельных запроса могут:
+    #   1) прочитать один и тот же used_ips из awg0.conf
+    #   2) выбрать одинаковый свободный IP
+    #   3) оба записать [Peer] с одинаковым AllowedIPs → конфликт конфига.
+    # Также awg-quick down/up нельзя вызывать параллельно.
+    async with _ip_lock:
+        try:
+            # 1. Генерируем ключи клиента
+            client_priv, client_pub = await _generate_keypair()
 
-        # 2. Находим свободный IP
-        used_ips = await _get_used_ips()
-        client_ip = None
-        for i in range(1, 255):
-            ip = f"10.8.1.{i}"
-            if ip not in used_ips:
-                client_ip = ip
-                break
+            # 2. Находим свободный IP
+            used_ips = await _get_used_ips()
+            client_ip = None
+            for i in range(1, 255):
+                ip = f"10.8.1.{i}"
+                if ip not in used_ips:
+                    client_ip = ip
+                    break
 
-        if client_ip is None:
-            raise RuntimeError("Нет свободных IP-адресов (подсеть 10.8.1.0/24)")
+            if client_ip is None:
+                raise RuntimeError("Нет свободных IP-адресов (подсеть 10.8.1.0/24)")
 
-        # 3. Читаем параметры сервера
-        server_params = await _get_server_params()
-        psk = await _get_psk()
-        server_pubkey = await _get_server_pubkey()
+            # 3. Читаем параметры сервера
+            server_params = await _get_server_params()
+            psk = await _get_psk()
+            server_pubkey = await _get_server_pubkey()
 
-        # 4. Собираем клиентский конфиг
-        client_config = _build_client_config(
-            client_priv_key=client_priv,
-            client_ip=client_ip,
-            server_params=server_params,
-            psk=psk,
-            server_pubkey=server_pubkey,
-        )
+            # 4. Собираем клиентский конфиг
+            client_config = _build_client_config(
+                client_priv_key=client_priv,
+                client_ip=client_ip,
+                server_params=server_params,
+                psk=psk,
+                server_pubkey=server_pubkey,
+            )
 
-        # 5. Добавляем Peer в awg0.conf
-        server_config = await _read_container_file("/opt/amnezia/awg/awg0.conf")
-        new_peer = (
-            f"\n[Peer]\n"
-            f"PublicKey = {client_pub}\n"
-            f"PresharedKey = {psk}\n"
-            f"AllowedIPs = {client_ip}/32\n"
-        )
-        await _write_container_file(
-            "/opt/amnezia/awg/awg0.conf",
-            server_config.rstrip() + "\n" + new_peer,
-        )
+            # 5. Добавляем Peer в awg0.conf
+            server_config = await _read_container_file("/opt/amnezia/awg/awg0.conf")
+            new_peer = (
+                f"\n[Peer]\n"
+                f"PublicKey = {client_pub}\n"
+                f"PresharedKey = {psk}\n"
+                f"AllowedIPs = {client_ip}/32\n"
+            )
+            await _write_container_file(
+                "/opt/amnezia/awg/awg0.conf",
+                server_config.rstrip() + "\n" + new_peer,
+            )
 
-        # 6. Обновляем clientsTable
-        now_str = datetime.now(timezone.utc).strftime("%a %b %d %H:%M:%S %Y")
-        await _update_clients_table(add={
-            "clientId": client_pub,
-            "userData": {
-                "clientName": f"OnyxVpn user {user_id}",
-                "creationDate": now_str,
-            },
-        })
+            # 6. Обновляем clientsTable
+            now_str = datetime.now(timezone.utc).strftime("%a %b %d %H:%M:%S %Y")
+            await _update_clients_table(add={
+                "clientId": client_pub,
+                "userData": {
+                    "clientName": f"OnyxVpn user {user_id}",
+                    "creationDate": now_str,
+                },
+            })
 
-        # 7. Перезагружаем интерфейс
-        await _reload_interface()
+            # 7. Перезагружаем интерфейс
+            await _reload_interface()
 
-        # 8. Собираем vpn:// URL
-        vpn_url = _build_vpn_key(
-            client_priv_key=client_priv,
-            client_pub_key=client_pub,
-            client_ip=client_ip,
-            server_params=server_params,
-            psk=psk,
-            server_pubkey=server_pubkey,
-            client_config=client_config,
-        )
+            # 8. Собираем vpn:// URL
+            vpn_url = _build_vpn_key(
+                client_priv_key=client_priv,
+                client_pub_key=client_pub,
+                client_ip=client_ip,
+                server_params=server_params,
+                psk=psk,
+                server_pubkey=server_pubkey,
+                client_config=client_config,
+            )
 
-        logger.info(
-            "Создан ключ для user_id=%s: ip=%s, pub=%s",
-            user_id, client_ip, client_pub[:16] + "...",
-        )
-        return vpn_url, client_pub
+            logger.info(
+                "Создан ключ для user_id=%s: ip=%s, pub=%s",
+                user_id, client_ip, client_pub[:16] + "...",
+            )
+            # Метрика: ключ успешно создан. plan_type_label — английский
+            # идентификатор для Prometheus label (вместо русских названий).
+            plan_type_label = plan_type or ("trial" if is_trial else "unknown")
+            vpn_keys_created_total.labels(
+                is_trial=str(is_trial).lower(),
+                plan_type=plan_type_label,
+            ).inc()
+            return vpn_url, client_pub
 
-    except Exception as e:
-        logger.exception("Ошибка создания ключа для user_id=%s: %s", user_id, e)
-        raise RuntimeError(f"Не удалось создать VPN-ключ: {e}") from e
+        except Exception as e:
+            logger.exception("Ошибка создания ключа для user_id=%s: %s", user_id, e)
+            raise RuntimeError(f"Не удалось создать VPN-ключ: {e}") from e
 
 
-async def revoke_client_key(sub_uuid: str) -> bool:
+async def revoke_client_key(
+    sub_uuid: str,
+    source: str = "api",
+    reason: str = "user_request",
+) -> bool:
     """
     Удалить ключ пользователя из AmneziaWG.
 
-    Находит Peer по public_key (который хранится в Subscription.uuid),
-    удаляет из awg0.conf и clientsTable, перезагружает интерфейс.
+    Находит Peer по public_key (хранится в Subscription.uuid), удаляет из
+    awg0.conf и clientsTable, перезагружает интерфейс.
+
+    Идемпотентно: если ключ уже удалён из обоих источников, возвращает True
+    без изменений. Это упрощает повторные вызовы после сбоя (например, если
+    прошлый revoke откатился на полпути).
 
     Args:
         sub_uuid: Public key клиента (хранится в Subscription.uuid).
+        source: Источник вызова для метрики. "api" (по умолчанию) для ручных
+            revoke через админку и POST /api/subscription/trial-error fallback,
+            "scheduler" для check_expired_subscriptions.
+        reason: Причина revoke для метрики. "user_request" по умолчанию,
+            "expired" если вызвано из scheduler'а.
 
     Returns:
-        True если ключ успешно удалён.
+        True если ключ отсутствует в обоих источниках (успешно удалён или
+        уже отсутствовал). False если во время операции произошла ошибка
+        Docker/файловой системы — нужно ретраить или чинить руками.
+
+    Raises:
+        ValueError: если sub_uuid пустой или не похож на WireGuard public key.
     """
+    if not sub_uuid or not isinstance(sub_uuid, str):
+        raise ValueError("sub_uuid должен быть непустой строкой")
+
     try:
-        # 1. Удаляем Peer из конфига
+        # 1. Читаем оба файла, чтобы понять, существует ли ключ вообще.
         config = await _read_container_file("/opt/amnezia/awg/awg0.conf")
+        try:
+            clients_table_raw = await _read_container_file("/opt/amnezia/awg/clientsTable")
+            clients_in_table = any(
+                c.get("clientId") == sub_uuid
+                for c in json.loads(clients_table_raw)
+            )
+        except (RuntimeError, json.JSONDecodeError):
+            clients_in_table = False
+
         new_config = _remove_peer_from_config(config, sub_uuid)
+        in_config = new_config != config
 
-        if new_config == config:
-            logger.warning("Ключ %s не найден в awg0.conf", sub_uuid)
-            return False
+        if not in_config and not clients_in_table:
+            # Уже удалён — это OK, ничего не делаем.
+            logger.info(
+                "Ключ %s уже отсутствует в awg0.conf и clientsTable — повторный revoke",
+                sub_uuid,
+            )
+            vpn_keys_revoked_total.labels(
+                result="noop", source=source, reason="already_revoked",
+            ).inc()
+            return True
 
-        await _write_container_file("/opt/amnezia/awg/awg0.conf", new_config)
+        # 2. Если есть в awg0.conf — переписываем файл.
+        if in_config:
+            await _write_container_file("/opt/amnezia/awg/awg0.conf", new_config)
+            logger.info("Peer %s удалён из awg0.conf", sub_uuid[:16] + "...")
+        else:
+            logger.warning(
+                "Ключ %s не найден в awg0.conf, но есть в clientsTable — "
+                "исправляем рассинхронизацию",
+                sub_uuid,
+            )
 
-        # 2. Удаляем из clientsTable
-        await _update_clients_table(remove_client_id=sub_uuid)
+        # 3. Удаляем из clientsTable.
+        if clients_in_table:
+            await _update_clients_table(remove_client_id=sub_uuid)
+            logger.info("clientId %s удалён из clientsTable", sub_uuid[:16] + "...")
+        else:
+            logger.warning(
+                "Ключ %s не найден в clientsTable, но был в awg0.conf — "
+                "исправляем рассинхронизацию",
+                sub_uuid,
+            )
 
-        # 3. Перезагружаем интерфейс
-        await _reload_interface()
+        # 4. Перезагружаем интерфейс (down + up) только если меняли awg0.conf.
+        if in_config:
+            await _reload_interface()
 
         logger.info("Ключ %s отозван", sub_uuid)
+        vpn_keys_revoked_total.labels(
+            result="success", source=source, reason=reason,
+        ).inc()
         return True
 
+    except RuntimeError as e:
+        # RuntimeError приходит из _read_container_file / _write_container_file /
+        # _reload_interface. Это инфраструктурная проблема — caller может
+        # ретраить (schedluer сделает это на следующем проходе).
+        logger.error(
+            "Инфраструктурная ошибка отзыва ключа %s: %s",
+            sub_uuid, e,
+        )
+        vpn_keys_revoked_total.labels(
+            result="failure", source=source, reason="runtime_error",
+        ).inc()
+        return False
+    except FileNotFoundError as e:
+        # Docker-контейнер не найден — это критично, но лучше вернуть False
+        # чем ронять caller'а (schedluer'у и админу достаточно знать, что revoke
+        # не выполнен).
+        logger.error(
+            "Контейнер Amnezia недоступен при отзыве ключа %s: %s",
+            sub_uuid, e,
+        )
+        vpn_keys_revoked_total.labels(
+            result="failure", source=source, reason="container_unavailable",
+        ).inc()
+        return False
     except Exception as e:
-        logger.exception("Ошибка отзыва ключа %s: %s", sub_uuid, e)
+        # Непредвиденная ошибка — логируем traceback для диагностики, но не
+        # роняем процесс (schedluer или админ продолжат работу).
+        logger.exception(
+            "Неизвестная ошибка при отзыве ключа %s: %s",
+            sub_uuid, e,
+        )
+        vpn_keys_revoked_total.labels(
+            result="failure", source=source, reason="unknown",
+        ).inc()
         return False
 
 
@@ -474,7 +713,11 @@ async def check_expired_subscriptions(session: AsyncSession) -> list[Subscriptio
     revoked = []
 
     for sub in expired:
-        success = await revoke_client_key(sub.uuid)
+        success = await revoke_client_key(
+            sub.uuid,
+            source="scheduler",
+            reason="expired",
+        )
 
         if success:
             sub.is_active = False

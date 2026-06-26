@@ -1,4 +1,15 @@
-"""Валидация Telegram WebApp initData и Login Widget."""
+"""Валидация Telegram WebApp initData и Login Widget.
+
+CSRF (S14): приложение использует Bearer-токены в Authorization header.
+Браузер НЕ отправляет их автоматически — злоумышленник не может заставить
+пользователя выполнить авторизованный запрос с другого origin. Классические
+CSRF-атаки (с использованием cookies) здесь неприменимы.
+
+HTTPS (S12): в production TLS терминируется на nginx. За reverse-proxy
+backend работает по HTTP, но прокси передаёт X-Forwarded-Proto=https, и
+SecurityHeadersMiddleware добавляет Strict-Transport-Security (см. api/main.py).
+Локальная разработка — http://localhost:8000, HSTS не активируется.
+"""
 
 import hashlib
 import hmac
@@ -15,6 +26,13 @@ logger = logging.getLogger(__name__)
 
 security = HTTPBearer(auto_error=False)
 
+# Replay-protection: initData от Telegram WebApp действителен не дольше 5 минут
+# после подписания. Стандартная рекомендация Telegram, защищает от перехвата.
+MAX_INIT_DATA_AGE_SECONDS = 300
+
+# Допустимое расхождение часов между клиентом и сервером (часы могут отставать/спешить).
+CLOCK_SKEW_TOLERANCE_SECONDS = 60
+
 
 def _validate_init_data(init_data: str, bot_token: str) -> dict[str, str]:
     """
@@ -23,10 +41,13 @@ def _validate_init_data(init_data: str, bot_token: str) -> dict[str, str]:
     Алгоритм:
     1. Парсим initData в словарь.
     2. Извлекаем hash.
-    3. Считаем secret_key = HMAC-SHA256("WebAppData", bot_token).
-    4. Сортируем пары по ключу, склеиваем через \n.
-    5. Считаем check_hash = HMAC-SHA256(data_check_string, secret_key).
-    6. Сравниваем с переданным hash.
+    3. Проверяем auth_date — не старше MAX_INIT_DATA_AGE_SECONDS.
+       Это защита от replay-атак: перехваченный initData становится
+       бесполезен через 5 минут после подписания Telegram'ом.
+    4. Считаем secret_key = HMAC-SHA256("WebAppData", bot_token).
+    5. Сортируем пары по ключу, склеиваем через \n.
+    6. Считаем check_hash = HMAC-SHA256(data_check_string, secret_key).
+    7. Сравниваем с переданным hash.
 
     Returns:
         Словарь распарсенных данных.
@@ -45,6 +66,20 @@ def _validate_init_data(init_data: str, bot_token: str) -> dict[str, str]:
 
     if not received_hash:
         raise ValueError("Отсутствует hash в initData")
+
+    # Replay-protection: auth_date должен быть недавним.
+    auth_date_raw = parsed.get("auth_date")
+    if not auth_date_raw:
+        raise ValueError("Отсутствует auth_date в initData")
+    try:
+        auth_date = int(auth_date_raw)
+    except (TypeError, ValueError) as e:
+        raise ValueError("Некорректный auth_date в initData") from e
+    current_time = int(time.time())
+    if current_time - auth_date > MAX_INIT_DATA_AGE_SECONDS:
+        raise ValueError("auth_date устарел (возможна replay-атака)")
+    if auth_date > current_time + CLOCK_SKEW_TOLERANCE_SECONDS:
+        raise ValueError("auth_date из будущего (возможна подделка)")
 
     # Считаем secret_key
     secret_key = hmac.new(
@@ -172,7 +207,10 @@ def validate_login_widget(data: dict[str, str], bot_token: str) -> int:
     if current_time - auth_date > 300:  # 5 минут
         raise ValueError("auth_date устарел")
 
-    # Извлекаем hash
+    # Извлекаем hash. Копируем dict, чтобы не мутировать входной словарь
+    # caller'а — иначе неожиданный side effect для всех, кто передаёт
+    # сюда ссылку на свой dict.
+    data = dict(data)
     received_hash = data.pop("hash")
 
     # Считаем secret_key = SHA256(bot_token)

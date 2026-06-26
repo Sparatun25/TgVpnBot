@@ -30,9 +30,6 @@ export default function App() {
   // Без этого юзер, нажав «Продолжить» при сбое сети, не получал бы обратной связи —
   // кнопка просто ничего не делала, и он застревал на preparing-экране.
   const [trialError, setTrialError] = useState<string | null>(null)
-  // Успех активации триала — true только когда API реально вернул 200.
-  // Отдельный флаг от trialError, чтобы UI не врал о готовности ключа.
-  const [trialSuccess, setTrialSuccess] = useState(false)
   // Флаг «запрос уже отправлен» — чтобы PreparingScreen не моргал success-иконкой
   // в начальный момент (до первого вызова activateTrial isLoading ещё false).
   const [trialHasStarted, setTrialHasStarted] = useState(false)
@@ -176,11 +173,9 @@ export default function App() {
   const handleActivateTrial = useCallback(async () => {
     // Сбрасываем предыдущее состояние — каждая новая попытка стартует с чистого листа.
     setTrialError(null)
-    setTrialSuccess(false)
     setTrialHasStarted(true)
     const result = await activateTrial()
     if (result) {
-      setTrialSuccess(true)
       await loadProfile()
       return
     }
@@ -191,9 +186,6 @@ export default function App() {
   }, [activateTrial, error, tg])
 
   const handlePreparingContinue = useCallback(() => {
-    // Переход к следующему шагу. Сбрасываем trialSuccess, чтобы при возврате
-    // preparing-экран не показал stale success.
-    setTrialSuccess(false)
     goNext() // preparing -> connect
   }, [goNext])
 
@@ -208,7 +200,6 @@ export default function App() {
   useEffect(() => {
     if (step !== 'preparing') {
       setTrialError(null)
-      setTrialSuccess(false)
       setTrialHasStarted(false)
       trialStartedRef.current = false
     }

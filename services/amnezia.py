@@ -599,106 +599,113 @@ async def revoke_client_key(
     if not sub_uuid or not isinstance(sub_uuid, str):
         raise ValueError("sub_uuid должен быть непустой строкой")
 
-    try:
-        # 1. Читаем оба файла, чтобы понять, существует ли ключ вообще.
-        config = await _read_container_file("/opt/amnezia/awg/awg0.conf")
+    # Тот же lock, что и в create_client_key — revoke и create пишут в одни и те же
+    # файлы (awg0.conf + clientsTable). Без общей сериализации параллельный revoke
+    # (scheduler + компенсирующий из routes.py) может прочитать один и тот же
+    # конфиг, удалить РАЗНЫЕ peer-блоки и записать их независимо → один из
+    # peer-ов будет удалён только в БД, но останется в Amnezia (orphan).
+    # Found by code-reviewer (CRITICAL #1).
+    async with _ip_lock:
         try:
-            clients_table_raw = await _read_container_file("/opt/amnezia/awg/clientsTable")
-            clients_in_table = any(
-                c.get("clientId") == sub_uuid
-                for c in json.loads(clients_table_raw)
-            )
-        except (RuntimeError, json.JSONDecodeError):
-            clients_in_table = False
+            # 1. Читаем оба файла, чтобы понять, существует ли ключ вообще.
+            config = await _read_container_file("/opt/amnezia/awg/awg0.conf")
+            try:
+                clients_table_raw = await _read_container_file("/opt/amnezia/awg/clientsTable")
+                clients_in_table = any(
+                    c.get("clientId") == sub_uuid
+                    for c in json.loads(clients_table_raw)
+                )
+            except (RuntimeError, json.JSONDecodeError):
+                clients_in_table = False
 
-        new_config = _remove_peer_from_config(config, sub_uuid)
-        in_config = new_config != config
+            new_config = _remove_peer_from_config(config, sub_uuid)
+            in_config = new_config != config
 
-        if not in_config and not clients_in_table:
-            # Уже удалён — это OK, ничего не делаем.
-            logger.info(
-                "Ключ %s уже отсутствует в awg0.conf и clientsTable — повторный revoke",
-                sub_uuid,
-            )
+            if not in_config and not clients_in_table:
+                # Уже удалён — это OK, ничего не делаем.
+                logger.info(
+                    "Ключ %s уже отсутствует в awg0.conf и clientsTable — повторный revoke",
+                    sub_uuid,
+                )
+                vpn_keys_revoked_total.labels(
+                    result="noop", source=source, reason="already_revoked",
+                ).inc()
+                return True
+
+            # 2. Если есть в awg0.conf — переписываем файл.
+            if in_config:
+                await _write_container_file("/opt/amnezia/awg/awg0.conf", new_config)
+                logger.info("Peer %s удалён из awg0.conf", sub_uuid[:16] + "...")
+            else:
+                logger.warning(
+                    "Ключ %s не найден в awg0.conf, но есть в clientsTable — "
+                    "исправляем рассинхронизацию",
+                    sub_uuid,
+                )
+
+            # 3. Удаляем из clientsTable.
+            if clients_in_table:
+                await _update_clients_table(remove_client_id=sub_uuid)
+                logger.info("clientId %s удалён из clientsTable", sub_uuid[:16] + "...")
+            else:
+                logger.warning(
+                    "Ключ %s не найден в clientsTable, но был в awg0.conf — "
+                    "исправляем рассинхронизацию",
+                    sub_uuid,
+                )
+
+            # 4. Перезагружаем интерфейс (down + up) только если меняли awg0.conf.
+            if in_config:
+                await _reload_interface()
+
+            logger.info("Ключ %s отозван", sub_uuid)
             vpn_keys_revoked_total.labels(
-                result="noop", source=source, reason="already_revoked",
+                result="success", source=source, reason=reason,
             ).inc()
             return True
 
-        # 2. Если есть в awg0.conf — переписываем файл.
-        if in_config:
-            await _write_container_file("/opt/amnezia/awg/awg0.conf", new_config)
-            logger.info("Peer %s удалён из awg0.conf", sub_uuid[:16] + "...")
-        else:
-            logger.warning(
-                "Ключ %s не найден в awg0.conf, но есть в clientsTable — "
-                "исправляем рассинхронизацию",
-                sub_uuid,
+        except RuntimeError as e:
+            # RuntimeError приходит из _read_container_file / _write_container_file /
+            # _reload_interface. Это инфраструктурная проблема — caller может
+            # ретраить (schedluer сделает это на следующем проходе).
+            logger.error(
+                "Инфраструктурная ошибка отзыва ключа %s: %s",
+                sub_uuid, e,
             )
-
-        # 3. Удаляем из clientsTable.
-        if clients_in_table:
-            await _update_clients_table(remove_client_id=sub_uuid)
-            logger.info("clientId %s удалён из clientsTable", sub_uuid[:16] + "...")
-        else:
-            logger.warning(
-                "Ключ %s не найден в clientsTable, но был в awg0.conf — "
-                "исправляем рассинхронизацию",
-                sub_uuid,
+            vpn_keys_revoked_total.labels(
+                result="failure", source=source, reason="runtime_error",
+            ).inc()
+            return False
+        except FileNotFoundError as e:
+            # Docker-контейнер не найден — это критично, но лучше вернуть False
+            # чем ронять caller'а (schedluer'у и админу достаточно знать, что revoke
+            # не выполнен).
+            logger.error(
+                "Контейнер Amnezia недоступен при отзыве ключа %s: %s",
+                sub_uuid, e,
             )
-
-        # 4. Перезагружаем интерфейс (down + up) только если меняли awg0.conf.
-        if in_config:
-            await _reload_interface()
-
-        logger.info("Ключ %s отозван", sub_uuid)
-        vpn_keys_revoked_total.labels(
-            result="success", source=source, reason=reason,
-        ).inc()
-        return True
-
-    except RuntimeError as e:
-        # RuntimeError приходит из _read_container_file / _write_container_file /
-        # _reload_interface. Это инфраструктурная проблема — caller может
-        # ретраить (schedluer сделает это на следующем проходе).
-        logger.error(
-            "Инфраструктурная ошибка отзыва ключа %s: %s",
-            sub_uuid, e,
-        )
-        vpn_keys_revoked_total.labels(
-            result="failure", source=source, reason="runtime_error",
-        ).inc()
-        return False
-    except FileNotFoundError as e:
-        # Docker-контейнер не найден — это критично, но лучше вернуть False
-        # чем ронять caller'а (schedluer'у и админу достаточно знать, что revoke
-        # не выполнен).
-        logger.error(
-            "Контейнер Amnezia недоступен при отзыве ключа %s: %s",
-            sub_uuid, e,
-        )
-        vpn_keys_revoked_total.labels(
-            result="failure", source=source, reason="container_unavailable",
-        ).inc()
-        return False
-    except Exception as e:
-        # Непредвиденная ошибка — логируем traceback для диагностики, но не
-        # роняем процесс (schedluer или админ продолжат работу).
-        logger.exception(
-            "Неизвестная ошибка при отзыве ключа %s: %s",
-            sub_uuid, e,
-        )
-        vpn_keys_revoked_total.labels(
-            result="failure", source=source, reason="unknown",
-        ).inc()
-        return False
+            vpn_keys_revoked_total.labels(
+                result="failure", source=source, reason="container_unavailable",
+            ).inc()
+            return False
+        except Exception as e:
+            # Непредвиденная ошибка — логируем traceback для диагностики, но не
+            # роняем процесс (schedluer или админ продолжат работу).
+            logger.exception(
+                "Неизвестная ошибка при отзыве ключа %s: %s",
+                sub_uuid, e,
+            )
+            vpn_keys_revoked_total.labels(
+                result="failure", source=source, reason="unknown",
+            ).inc()
+            return False
 
 
 async def check_expired_subscriptions(session: AsyncSession) -> list[Subscription]:
     """
     Найти все истёкшие подписки и отозвать ключи.
 
-    Возвращает список обработанных подписок.
+    Возвращает список успешно обработанных подписок (revoke + is_active=False).
     """
     now = datetime.now(timezone.utc)
 
@@ -711,6 +718,7 @@ async def check_expired_subscriptions(session: AsyncSession) -> list[Subscriptio
     expired = result.scalars().all()
 
     revoked = []
+    failed_revoke_subs: list[tuple[int, str, int]] = []
 
     for sub in expired:
         success = await revoke_client_key(
@@ -719,15 +727,33 @@ async def check_expired_subscriptions(session: AsyncSession) -> list[Subscriptio
             reason="expired",
         )
 
+        # Всегда деактивируем подписку после попытки (audit #4):
+        # - иначе пользователь видит "Подписка активна" пока ключ уже отозван;
+        # - иначе scheduler бесконечно ретраит один и тот же revoke
+        #   (Docker timeout = 30 сек → 60 тиков в час = тысячи таймаутов).
+        # Цена: если revoke упал — ключ остаётся orphan в awg0.conf/clientsTable.
+        # Админ видит критический лог и чистит руками через
+        # /api/admin/subscriptions/{id}/revoke после починки Docker.
+        sub.is_active = False
+
         if success:
-            sub.is_active = False
             revoked.append(sub)
             logger.info("Ключ отозван: subscription_id=%s", sub.id)
         else:
+            failed_revoke_subs.append((sub.id, sub.uuid, sub.user_id))
             logger.warning(
-                "Не удалось отозвать ключ: subscription_id=%s",
-                sub.id,
+                "Не удалось отозвать ключ (orphan в Amnezia): subscription_id=%s, "
+                "user_id=%s, pub=%s — нужна ручная очистка",
+                sub.id, sub.user_id, sub.uuid[:16] + "...",
             )
+
+    if failed_revoke_subs:
+        # Дублируем critical-лог одной строкой — проще грепать / алертить
+        # в Logfire/Sentry. Каждый tuple: (sub_id, pub, user_id).
+        logger.error(
+            "ORPHAN_KEYS_AFTER_REVOKE: остались ключи в Amnezia после сбоя revoke: %s",
+            failed_revoke_subs,
+        )
 
     await session.commit()
     return revoked

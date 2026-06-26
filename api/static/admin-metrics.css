@@ -1,0 +1,170 @@
+/* OnyxVpn Admin — Metrics, Panels, Forms */
+
+.metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--space-4);
+    margin-bottom: var(--space-8);
+}
+
+.metric-card {
+    position: relative;
+    padding: var(--space-5);
+    background: linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-elevated-2) 100%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    transition: all var(--duration-base) var(--ease-out);
+}
+
+.metric-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--brand-glow-soft) 50%, transparent);
+    opacity: 0;
+    transition: opacity var(--duration-base) var(--ease-out);
+}
+
+.metric-card:hover {
+    border-color: var(--border-bright);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+.metric-card:hover::before { opacity: 1; }
+
+.metric-card__header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: var(--space-4); }
+.metric-card__label { font-size: 12px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+
+.metric-card__icon {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    background: var(--brand-glow-soft);
+    color: var(--brand-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.metric-card__value {
+    font-size: 36px;
+    font-weight: 800;
+    color: var(--text-primary);
+    letter-spacing: -0.03em;
+    line-height: 1;
+    margin-bottom: var(--space-2);
+    font-variant-numeric: tabular-nums;
+}
+
+.metric-card__value--accent {
+    background: var(--brand-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Зелёный акцент для online-индикатора ("Онлайн сейчас") */
+.metric-card__value--success {
+    color: var(--success);
+}
+
+.metric-card__delta { display: inline-flex; align-items: center; gap: var(--space-1); font-size: 12px; font-weight: 600; color: var(--success); }
+
+/* Карточка с зелёным подсветом (online/активность) */
+.metric-card--accent {
+    background:
+        linear-gradient(180deg, var(--success-bg) 0%, transparent 60%),
+        linear-gradient(180deg, var(--bg-elevated) 0%, var(--bg-elevated-2) 100%);
+    border-color: rgba(16, 185, 129, 0.25);
+}
+
+.metric-card--accent:hover {
+    border-color: rgba(16, 185, 129, 0.5);
+}
+
+.metric-card--accent::before {
+    background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.3) 50%, transparent);
+}
+
+/* Карточка трафика — стандартный вид, но с подсказкой снизу */
+.metric-card--traffic .metric-card__icon {
+    color: var(--info);
+}
+
+/* Маленький подзаголовок под значением ("↓ 1.2 GB · ↑ 300 MB" / "handshake в последние 3 мин") */
+.metric-card__hint {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.005em;
+    margin-top: -2px;
+}
+
+.metric-card__hint-sep {
+    color: var(--text-dim);
+    user-select: none;
+}
+
+.panel {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    margin-bottom: var(--space-6);
+}
+
+.panel__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--space-5) var(--space-6);
+    border-bottom: 1px solid var(--border);
+    gap: var(--space-4);
+    flex-wrap: wrap;
+}
+
+.panel__title-block { display: flex; flex-direction: column; gap: 2px; }
+.panel__title { font-size: 16px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.01em; }
+.panel__subtitle { font-size: 12px; color: var(--text-muted); }
+.panel__filters { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.panel__body { padding: var(--space-6); }
+.panel__body--flush { padding: 0; }
+
+.input, .select {
+    padding: 10px var(--space-4);
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 14px;
+    outline: none;
+    transition: all var(--duration-fast) var(--ease-out);
+    min-height: 40px;
+    font-weight: 500;
+}
+
+.input::placeholder { color: var(--text-dim); }
+.input:hover, .select:hover { border-color: var(--border-bright); }
+.input:focus, .select:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-glow-soft); }
+
+.search-wrapper { position: relative; }
+
+.input--search {
+    padding-left: 38px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238B8B95' stroke-width='2' viewBox='0 0 24 24'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 12px center;
+    min-width: 220px;
+}
+
+.form-group { margin-bottom: var(--space-4); }
+.form-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: var(--space-2); }
+.form-hint { font-size: 12px; color: var(--text-muted); margin-top: var(--space-1); }

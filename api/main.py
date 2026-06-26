@@ -1,5 +1,6 @@
 """Точка запуска FastAPI приложения."""
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -22,9 +23,11 @@ from api.admin_ui import router as admin_ui_router
 from api.routes import router
 from core import metrics  # noqa: F401  # регистрирует все Counter/Histogram в REGISTRY
 from core.config import settings
+from core.db import async_session_factory
 from core.logging import get_logger, setup_logging
 from core.middleware import REQUEST_ID_HEADER, RequestIdMiddleware
 from database.init_db import init_db
+from services.traffic_collector import collect_traffic_stats
 
 # Настройка логирования ДО создания app и импорта роутеров, чтобы все
 # последующие логгеры (включая uvicorn, sqlalchemy) шли через structlog pipeline.
@@ -73,8 +76,72 @@ async def lifespan(app: FastAPI):
         await init_db()
     except Exception as exc:
         logger.exception("db_init_failed", error=str(exc))
-    yield
-    logger.info("app_stopping")
+
+    # Фоновый сборщик трафика WireGuard. Запускается как отдельная asyncio-задача,
+    # чтобы не блокировать event loop и не задерживать старт приложения.
+    # Если контейнер Amnezia ещё не развёрнут (dev) или фича выключена — пропускаем.
+    traffic_task: asyncio.Task | None = None
+    if settings.traffic_collector_enabled:
+        traffic_task = asyncio.create_task(
+            _traffic_collector_loop(),
+            name="traffic_collector",
+        )
+        logger.info(
+            "traffic_collector_started",
+            interval=settings.traffic_collect_interval_seconds,
+        )
+    else:
+        logger.info("traffic_collector_disabled")
+
+    try:
+        yield
+    finally:
+        # Корректно останавливаем фоновую задачу при shutdown, чтобы не было
+        # висящих корутин в логах uvicorn.
+        if traffic_task is not None and not traffic_task.done():
+            traffic_task.cancel()
+            try:
+                await traffic_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                logger.warning("traffic_collector_stop_error", error=str(exc))
+        logger.info("app_stopping")
+
+
+async def _traffic_collector_loop() -> None:
+    """Бесконечный цикл сбора трафика из Amnezia-контейнера.
+
+    Логика:
+    - Ждём interval секунд.
+    - Открываем сессию из async_session_factory (вне FastAPI dependency).
+    - Вызываем collect_traffic_stats.
+    - При любой ошибке внутри одной итерации — логируем, продолжаем.
+      Один неудачный запуск не должен убивать весь цикл.
+    - Задача завершается через CancelledError при shutdown.
+    """
+    interval = max(30, settings.traffic_collect_interval_seconds)
+    # Небольшая задержка при старте: даём другим компонентам (БД, Docker)
+    # полностью подняться, прежде чем первый запрос пойдёт в Amnezia.
+    await asyncio.sleep(5)
+
+    while True:
+        try:
+            async with async_session_factory() as session:
+                result = await collect_traffic_stats(session)
+                if not result["container_available"]:
+                    logger.warning(
+                        "traffic_collector_amnezia_unavailable",
+                        hint="контейнер AmneziaWG не отвечает на wg show",
+                    )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                "traffic_collector_iteration_failed",
+                error=str(exc),
+            )
+        await asyncio.sleep(interval)
 
 
 app = FastAPI(

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { AnimatePresence } from 'framer-motion'
+import { AnimatePresence, MotionConfig } from 'framer-motion'
 import { useTelegram } from './hooks/useTelegram'
 import { useApi, ProfileData } from './hooks/useApi'
 import { useOnboarding } from './hooks/useOnboarding'
@@ -30,6 +30,14 @@ export default function App() {
   // Без этого юзер, нажав «Продолжить» при сбое сети, не получал бы обратной связи —
   // кнопка просто ничего не делала, и он застревал на preparing-экране.
   const [trialError, setTrialError] = useState<string | null>(null)
+  // Успех активации триала — true только когда API реально вернул 200.
+  // Отдельный флаг от trialError, чтобы UI не врал о готовности ключа.
+  const [trialSuccess, setTrialSuccess] = useState(false)
+  // Флаг «запрос уже отправлен» — чтобы PreparingScreen не моргал success-иконкой
+  // в начальный момент (до первого вызова activateTrial isLoading ещё false).
+  const [trialHasStarted, setTrialHasStarted] = useState(false)
+  // Ref-гард от двойного вызова activateTrial при повторном mount/re-render.
+  const trialStartedRef = useRef(false)
 
   // Deep link routing: parse URL params once on mount, store in ref.
   // Split into two effects so that `plan` (which needs balance from profile)
@@ -128,21 +136,46 @@ export default function App() {
     goNext() // install -> preparing
   }, [goNext])
 
-  const handlePreparingComplete = useCallback(async () => {
-    // Сбрасываем ошибку предыдущей попытки — иначе юзер увидит stale-сообщение
-    // при повторном клике после успешного retry.
+  const handleActivateTrial = useCallback(async () => {
+    // Сбрасываем предыдущее состояние — каждая новая попытка стартует с чистого листа.
     setTrialError(null)
+    setTrialSuccess(false)
+    setTrialHasStarted(true)
     const result = await activateTrial()
     if (result) {
+      setTrialSuccess(true)
       await loadProfile()
-      goNext() // preparing -> connect
       return
     }
     // activateTrial вернул null — это либо сетевая ошибка, либо 4xx/5xx.
     // useApi уже положил текст ошибки в свой error; берём его, чтобы не выдумывать своё.
     tg?.HapticFeedback?.notificationOccurred('error')
     setTrialError(error ?? 'Не удалось активировать триал. Попробуйте ещё раз.')
-  }, [activateTrial, error, goNext, tg])
+  }, [activateTrial, error, tg])
+
+  const handlePreparingContinue = useCallback(() => {
+    // Переход к следующему шагу. Сбрасываем trialSuccess, чтобы при возврате
+    // preparing-экран не показал stale success.
+    setTrialSuccess(false)
+    goNext() // preparing -> connect
+  }, [goNext])
+
+  const handlePreparingRetry = useCallback(() => {
+    handleActivateTrial()
+  }, [handleActivateTrial])
+
+  // Сбрасываем состояние preparing при уходе с этого шага.
+  // Сам auto-trigger активации делает PreparingScreen через свой useEffect + onActivate.
+  // Здесь только lifecycle: при повторном заходе на preparing экран смонтируется заново
+  // (AnimatePresence + key="preparing") и useEffect вызовет onActivate автоматически.
+  useEffect(() => {
+    if (step !== 'preparing') {
+      setTrialError(null)
+      setTrialSuccess(false)
+      setTrialHasStarted(false)
+      trialStartedRef.current = false
+    }
+  }, [step])
 
   const handleConnect = useCallback(() => {
     goNext() // connect -> waiting
@@ -167,8 +200,8 @@ export default function App() {
   // Loading state
   if (loading && !profile) {
     return (
-      <div className="loading-screen">
-        <div className="loading-spinner" />
+      <div className="loading-screen" role="status" aria-live="polite">
+        <div className="loading-spinner" aria-hidden="true" />
         <div className="loading-text">Загрузка...</div>
       </div>
     )
@@ -177,8 +210,8 @@ export default function App() {
   // Error state
   if (error && !profile) {
     return (
-      <div className="error-screen">
-        <div className="error-icon">
+      <div className="error-screen" role="alert">
+        <div className="error-icon" aria-hidden="true">
           <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2">
             <circle cx="12" cy="12" r="10" />
             <path d="M12 8V12M12 16H12.01" strokeLinecap="round" />
@@ -196,6 +229,7 @@ export default function App() {
   const isOnboarding = step !== 'dashboard'
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className={`app ${isOnboarding ? 'app-onboarding' : ''}`}>
       <main className="app-content">
         <AnimatePresence mode="wait">
@@ -210,10 +244,13 @@ export default function App() {
               {step === 'preparing' && (
                 <PreparingScreen
                   key="preparing"
-                  onComplete={handlePreparingComplete}
-                  onBack={goBack}
+                  isLoading={loading}
                   error={trialError}
-                  onRetry={handlePreparingComplete}
+                  hasStarted={trialHasStarted}
+                  onActivate={handleActivateTrial}
+                  onContinue={handlePreparingContinue}
+                  onBack={goBack}
+                  onRetry={handlePreparingRetry}
                 />
               )}
               {step === 'connect' && (
@@ -275,5 +312,6 @@ export default function App() {
         <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
       )}
     </div>
+    </MotionConfig>
   )
 }

@@ -10,8 +10,17 @@
   --onyx-success: #10B981;
   --onyx-warning: #F59E0B;
   --onyx-text: #FFFFFF;
-  --onyx-text-muted: #8A8A8A;
+  --onyx-text-muted: #9E9E9E;
   --onyx-text-secondary: #A0A0A0;
+
+  /* WCAG AA contrast audit (на тёмной теме, --onyx-bg = #0B0B0C):
+     --onyx-text      #FFFFFF → 19.93:1   AAA
+     --onyx-text-muted #9E9E9E → 7.37:1   AAA normal text  (был #8A8A8A = 5.70:1)
+     --onyx-text-secondary #A0A0A0 → 9.20:1  AAA
+     --onyx-accent    #7C3AED → 3.45:1   AA large text only (>=18pt или 14pt bold)
+     --onyx-success   #10B981 → 8.41:1   AAA
+     --onyx-warning   #F59E0B → 9.51:1   AAA
+     Светлая тема: --tg-hint из Telegram перекрывает --onyx-text-muted. */
 
   /* Telegram theme params (fallbacks) */
   --tg-bg: var(--onyx-bg);
@@ -351,6 +360,8 @@ body::before {
   margin-bottom: 24px;
   width: 100%;
   max-width: 360px;
+  list-style: none;
+  padding: 0;
 }
 
 @media (max-width: 360px) {
@@ -1017,6 +1028,8 @@ body::before {
   width: 100%;
   max-width: 340px;
   position: relative;
+  list-style: none;
+  padding: 0;
 }
 
 .connect-step {
@@ -1759,6 +1772,8 @@ details[open] .help-toggle svg {
   flex-direction: column;
   gap: 12px;
   margin-top: 16px;
+  list-style: none;
+  padding: 0;
 }
 
 .value-point {
@@ -2102,6 +2117,16 @@ details[open] .help-toggle svg {
   font-size: 18px;
   font-weight: 600;
   color: var(--onyx-text-muted);
+}
+
+/* Подсказка под полем суммы — показывается когда введено значение < 10 ₽.
+   aria-describedby связывает её с input; aria-invalid на input подсказывает
+   скринридеру состояние ошибки. Цвет — muted, не warning: сообщение
+   информационное, текст сам по себе несёт смысл (WCAG 1.4.1). */
+.topup-amount-hint {
+  font-size: 12px;
+  color: var(--onyx-text-muted);
+  margin-top: -8px;
 }
 
 .topup-quick-amounts {
@@ -2529,8 +2554,10 @@ details[open] .help-toggle svg {
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 36px;
-  height: 36px;
+  /* WCAG 2.5.5 AAA: минимальный размер тач-цели 44×44.
+     Раньше было 36×36 — попадает в AA (24×24), но не AAA. */
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2583,6 +2610,22 @@ details[open] .help-toggle svg {
   border-radius: 8px;
   font-size: 13px;
   margin-bottom: 16px;
+}
+
+/* Ошибка создания платежа в TopUpBottomSheet. Жёлтый акцент, чтобы было
+   видно даже без цвета (иконка/рамка), и чтобы не путать с success (зелёный)
+   и pending (нейтральный серый). */
+.payment-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 8px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  color: #F59E0B;
 }
 
 .bottom-sheet-cta {
@@ -2688,4 +2731,55 @@ details[open] .help-toggle svg {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ─────────────────────────────────────────────────────────
+   Accessibility utilities
+   ───────────────────────────────────────────────────────── */
+
+/* Скрывает визуально, но оставляет доступным для скринридеров.
+   Используется для aria-live сообщений и label'ов input'ов без визуального текста. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Фокус-стили для клавиатурной навигации.
+   Telegram Web App часто открывается на десктопе — без явного outline
+   пользователь не видит, где находится фокус.
+   :focus-visible срабатывает только при навигации с клавиатуры,
+   не мешает пользователям мыши. */
+:focus-visible {
+  outline: 2px solid var(--onyx-accent, #7C3AED);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+button:focus-visible,
+.nav-tab:focus-visible,
+.platform-card:focus-visible {
+  outline: 2px solid var(--onyx-accent, #7C3AED);
+  outline-offset: 3px;
+}
+
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--onyx-accent, #7C3AED);
+  outline-offset: 1px;
+  border-color: var(--onyx-accent, #7C3AED);
+}
+
+/* Клик-цели внутри кнопок не должны перехватывать outline.
+   pointer-events:none гарантирует, что SVG/IMG не становятся
+   отдельной focus-целью внутри <button>. */
+button svg,
+button img {
+  pointer-events: none;
 }

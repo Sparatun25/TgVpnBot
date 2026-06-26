@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback } from 'react'
 
 const API_BASE = '/api'
 const REQUEST_TIMEOUT = 30000 // 30 секунд
@@ -41,7 +41,6 @@ export interface BackendTariff {
 export function useApi(getInitData: () => string) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const abortControllerRef = useRef<AbortController | null>(null)
 
   const headers = useCallback(() => {
     const initData = getInitData()
@@ -51,17 +50,15 @@ export function useApi(getInitData: () => string) {
     }
   }, [getInitData])
 
-  const cancelRequest = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-      abortControllerRef.current = null
-    }
-  }, [])
-
+  // Каждый запрос создаёт локальный AbortController со своим 30-секундным
+  // таймаутом. Раньше был общий abortControllerRef, который отменял ЛЮБОЙ
+  // предыдущий запрос при старте нового — это значило, что loadProfile в
+  // фоне + клик "Купить" убивали профильный fetch. Per-request контроллеры
+  // позволяют запросам идти параллельно; таймаут и cleanup на стороне
+  // вызывающего компонента изолированы.
   const getProfile = useCallback(async (): Promise<ProfileData | null> => {
-    cancelRequest()
     const controller = new AbortController()
-    abortControllerRef.current = controller
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
 
     setLoading(true)
     setError(null)
@@ -69,14 +66,11 @@ export function useApi(getInitData: () => string) {
     // Проверяем наличие initData (Mini App открыт в Telegram)
     const initData = getInitData()
     if (!initData) {
+      clearTimeout(timeoutId)
       setError('Откройте приложение через Telegram')
       setLoading(false)
       return null
     }
-
-    const timeoutId = setTimeout(() => {
-      controller.abort()
-    }, REQUEST_TIMEOUT)
 
     try {
       const response = await fetch(`${API_BASE}/profile`, {
@@ -116,36 +110,23 @@ export function useApi(getInitData: () => string) {
       return await response.json()
     } catch (err) {
       clearTimeout(timeoutId)
-      // Не выставляем ошибку, если запрос был отменён более новым вызовом
-      // (React StrictMode дублирует эффекты, плюс ретраи из UI). Иначе
-      // отменённый запрос оставляет stale error поверх успешного ответа нового.
-      if (abortControllerRef.current === controller) {
-        if (err instanceof Error && err.name === 'AbortError') {
-          setError('Превышено время ожидания. Попробуйте снова.')
-        } else {
-          setError(err instanceof Error ? err.message : 'Ошибка сети')
-        }
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('Превышено время ожидания. Попробуйте снова.')
+      } else {
+        setError(err instanceof Error ? err.message : 'Ошибка сети')
       }
       return null
     } finally {
-      if (abortControllerRef.current === controller) {
-        setLoading(false)
-        abortControllerRef.current = null
-      }
+      setLoading(false)
     }
-  }, [headers, cancelRequest])
+  }, [headers])
 
   const activateTrial = useCallback(async (): Promise<TrialResponse | null> => {
-    cancelRequest()
     const controller = new AbortController()
-    abortControllerRef.current = controller
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
 
     setLoading(true)
     setError(null)
-
-    const timeoutId = setTimeout(() => {
-      controller.abort()
-    }, REQUEST_TIMEOUT)
 
     try {
       const response = await fetch(`${API_BASE}/subscription/trial`, {
@@ -164,36 +145,23 @@ export function useApi(getInitData: () => string) {
       return await response.json()
     } catch (err) {
       clearTimeout(timeoutId)
-      // Не выставляем ошибку, если запрос был отменён более новым вызовом
-      // (React StrictMode дублирует эффекты, плюс ретраи из UI). Иначе
-      // отменённый запрос оставляет stale error поверх успешного ответа нового.
-      if (abortControllerRef.current === controller) {
-        if (err instanceof Error && err.name === 'AbortError') {
-          setError('Превышено время ожидания. Попробуйте снова.')
-        } else {
-          setError(err instanceof Error ? err.message : 'Ошибка сети')
-        }
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('Превышено время ожидания. Попробуйте снова.')
+      } else {
+        setError(err instanceof Error ? err.message : 'Ошибка сети')
       }
       return null
     } finally {
-      if (abortControllerRef.current === controller) {
-        setLoading(false)
-        abortControllerRef.current = null
-      }
+      setLoading(false)
     }
-  }, [headers, cancelRequest])
+  }, [headers])
 
   const createPayment = useCallback(async (amountKopecks: number): Promise<PaymentResponse | null> => {
-    cancelRequest()
     const controller = new AbortController()
-    abortControllerRef.current = controller
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
 
     setLoading(true)
     setError(null)
-
-    const timeoutId = setTimeout(() => {
-      controller.abort()
-    }, REQUEST_TIMEOUT)
 
     try {
       const response = await fetch(`${API_BASE}/payment/create`, {
@@ -213,36 +181,23 @@ export function useApi(getInitData: () => string) {
       return await response.json()
     } catch (err) {
       clearTimeout(timeoutId)
-      // Не выставляем ошибку, если запрос был отменён более новым вызовом
-      // (React StrictMode дублирует эффекты, плюс ретраи из UI). Иначе
-      // отменённый запрос оставляет stale error поверх успешного ответа нового.
-      if (abortControllerRef.current === controller) {
-        if (err instanceof Error && err.name === 'AbortError') {
-          setError('Превышено время ожидания. Попробуйте снова.')
-        } else {
-          setError(err instanceof Error ? err.message : 'Ошибка сети')
-        }
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('Превышено время ожидания. Попробуйте снова.')
+      } else {
+        setError(err instanceof Error ? err.message : 'Ошибка сети')
       }
       return null
     } finally {
-      if (abortControllerRef.current === controller) {
-        setLoading(false)
-        abortControllerRef.current = null
-      }
+      setLoading(false)
     }
-  }, [headers, cancelRequest])
+  }, [headers])
 
   const purchaseSubscription = useCallback(async (tariffId: string): Promise<TrialResponse | null> => {
-    cancelRequest()
     const controller = new AbortController()
-    abortControllerRef.current = controller
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT)
 
     setLoading(true)
     setError(null)
-
-    const timeoutId = setTimeout(() => {
-      controller.abort()
-    }, REQUEST_TIMEOUT)
 
     try {
       const response = await fetch(`${API_BASE}/subscription/purchase`, {
@@ -262,24 +217,16 @@ export function useApi(getInitData: () => string) {
       return await response.json()
     } catch (err) {
       clearTimeout(timeoutId)
-      // Не выставляем ошибку, если запрос был отменён более новым вызовом
-      // (React StrictMode дублирует эффекты, плюс ретраи из UI). Иначе
-      // отменённый запрос оставляет stale error поверх успешного ответа нового.
-      if (abortControllerRef.current === controller) {
-        if (err instanceof Error && err.name === 'AbortError') {
-          setError('Превышено время ожидания. Попробуйте снова.')
-        } else {
-          setError(err instanceof Error ? err.message : 'Ошибка сети')
-        }
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('Превышено время ожидания. Попробуйте снова.')
+      } else {
+        setError(err instanceof Error ? err.message : 'Ошибка сети')
       }
       return null
     } finally {
-      if (abortControllerRef.current === controller) {
-        setLoading(false)
-        abortControllerRef.current = null
-      }
+      setLoading(false)
     }
-  }, [headers, cancelRequest])
+  }, [headers])
 
   const getTariffs = useCallback(async (signal?: AbortSignal): Promise<BackendTariff[] | null> => {
     // Compose caller-provided signal with the standard timeout.

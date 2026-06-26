@@ -68,7 +68,7 @@ export function TariffsScreen({
   onPurchaseComplete,
 }: TariffsScreenProps) {
   const { tg, getInitData } = useTelegram()
-  const { purchaseSubscription, getTariffs } = useApi(getInitData)
+  const { purchaseSubscription, getTariffs, error: apiError } = useApi(getInitData)
   const [tariffs, setTariffs] = useState<Tariff[]>([])
   const [tariffsLoading, setTariffsLoading] = useState(true)
   const [purchasing, setPurchasing] = useState<string | null>(null)
@@ -129,14 +129,25 @@ export function TariffsScreen({
       onPurchaseComplete?.()
     } else {
       tg?.HapticFeedback?.notificationOccurred('error')
-      setPurchaseError('Не удалось купить подписку. Попробуйте ещё раз.')
+      // Показываем реальную причину от useApi (сетевая, 4xx, 5xx),
+      // а не generic-сообщение — иначе юзер не понимает, retry'ить или чинить сеть.
+      setPurchaseError(apiError ?? 'Не удалось купить подписку. Попробуйте ещё раз.')
     }
   }, [balance, purchaseSubscription, tg, onPurchaseComplete])
 
   // Auto-buy from deep link (after tariffs + profile are loaded).
   useEffect(() => {
     if (!autoPlanId || handledAutoPlanRef.current === autoPlanId) return
-    if (tariffsLoading || tariffs.length === 0) return
+    if (tariffsLoading) return
+
+    // Тарифы не загрузились — нельзя автоматически купить. НЕ помечаем
+    // autoPlanId как обработанный, чтобы при retry загрузки (или следующем
+    // рендере после успешного fetch) попробовать снова. Иначе deep-link
+    // "съедался" молча, и юзер видел экран тарифов без фидбэка.
+    if (tariffs.length === 0) {
+      setPurchaseError('Не удалось загрузить тарифы. Нажмите «Повторить», чтобы продолжить покупку.')
+      return
+    }
 
     const tariff = tariffs.find(t => t.id === autoPlanId)
     handledAutoPlanRef.current = autoPlanId
@@ -166,38 +177,38 @@ export function TariffsScreen({
         transition={{ duration: 0.4, delay: 0.1 }}
       >
         <h2 className="screen-title">Почему пользователи выбирают Onyx VPN</h2>
-        <div className="value-points">
-          <div className="value-point">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+        <ul className="value-points">
+          <li className="value-point">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
               <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span>Безлимитный трафик</span>
-          </div>
-          <div className="value-point">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+          </li>
+          <li className="value-point">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
               <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span>Высокая скорость</span>
-          </div>
-          <div className="value-point">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+          </li>
+          <li className="value-point">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
               <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span>Поддержка нескольких устройств</span>
-          </div>
-          <div className="value-point">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+          </li>
+          <li className="value-point">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
               <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span>Быстрое подключение</span>
-          </div>
-        </div>
+          </li>
+        </ul>
       </motion.div>
 
       <div className="tariffs-grid">
         {tariffsLoading && (
-          <div className="tariffs-loading">
-            <div className="loading-spinner" />
+          <div className="tariffs-loading" role="status" aria-live="polite">
+            <div className="loading-spinner" aria-hidden="true" />
             <div className="loading-text">Загрузка тарифов...</div>
           </div>
         )}
@@ -260,6 +271,11 @@ export function TariffsScreen({
               className="tariff-button"
               onClick={() => handleBuy(tariff)}
               disabled={purchasing === tariff.id}
+              aria-label={
+                purchasing === tariff.id
+                  ? `Подключение тарифа ${tariff.name}`
+                  : `Подключить тариф ${tariff.name} за ${tariff.price} ₽`
+              }
               whileTap={{ scale: 0.96 }}
             >
               {purchasing === tariff.id ? 'Подключение...' : 'Подключить'}

@@ -187,12 +187,20 @@ export function WaitingScreen({ onActivated }: WaitingScreenProps) {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4, delay: 0.4 }}
       >
-        <div className="progress-bar">
+        <div
+          className="progress-bar"
+          role="progressbar"
+          aria-valuenow={Math.round(progress)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Проверка подключения: ${elapsed} из 45 секунд`}
+        >
           <motion.div
             className="progress-fill"
             initial={{ width: '0%' }}
             animate={{ width: `${progress}%` }}
             transition={{ duration: 0.5 }}
+            aria-hidden="true"
           />
         </div>
         <div className="progress-text">{elapsed} сек</div>

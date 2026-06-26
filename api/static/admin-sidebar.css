@@ -1,0 +1,154 @@
+/* OnyxVpn Admin — Sidebar + Main layout */
+
+.sidebar {
+    grid-area: sidebar;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-elevated);
+    border-right: 1px solid var(--border);
+    overflow: hidden;
+    position: relative;
+}
+
+.sidebar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 1px;
+    height: 100%;
+    background: linear-gradient(180deg, transparent, var(--brand-glow-soft) 50%, transparent);
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.sidebar__brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    height: var(--header-height);
+    padding: 0 var(--space-5);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.sidebar__brand-logo {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    background: var(--brand-gradient);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: var(--shadow-glow);
+    font-size: 20px;
+}
+
+.sidebar__brand-text { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
+.sidebar__brand-name { font-size: 15px; font-weight: 800; color: var(--text-primary); letter-spacing: -0.01em; white-space: nowrap; }
+.sidebar__brand-tag { font-size: 11px; color: var(--text-muted); font-weight: 500; white-space: nowrap; }
+
+.sidebar__nav {
+    flex: 1;
+    padding: var(--space-6) var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow-y: auto;
+}
+
+.sidebar__section-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: var(--space-4) var(--space-3) var(--space-2);
+}
+.sidebar__section-title:first-child { padding-top: 0; }
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 10px var(--space-3);
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 500;
+    transition: all var(--duration-fast) var(--ease-out);
+    text-align: left;
+    width: 100%;
+    position: relative;
+}
+
+.nav-item:hover { background: var(--bg-elevated-2); color: var(--text-primary); }
+
+.nav-item--active {
+    background: var(--brand-glow-soft);
+    color: var(--brand-light);
+}
+
+.nav-item--active::before {
+    content: '';
+    position: absolute;
+    left: -12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 20px;
+    background: var(--brand);
+    border-radius: 0 var(--radius-full) var(--radius-full) 0;
+    box-shadow: 0 0 12px var(--brand-glow);
+}
+
+.nav-item__icon { width: 18px; height: 18px; flex-shrink: 0; stroke-width: 1.75; }
+.nav-item__label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.sidebar__footer { padding: var(--space-3); border-top: 1px solid var(--border); flex-shrink: 0; }
+
+.sidebar__mascot {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: var(--bg-elevated-2);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+}
+
+.sidebar__mascot-img {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+    flex-shrink: 0;
+    filter: drop-shadow(0 2px 8px var(--brand-glow));
+}
+
+.sidebar__mascot-text { display: flex; flex-direction: column; min-width: 0; }
+.sidebar__mascot-title { font-size: 12px; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
+.sidebar__mascot-sub { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+
+/* Main */
+.main { grid-area: main; overflow-y: auto; padding: var(--space-8); }
+
+.page { max-width: 1280px; margin: 0 auto; animation: page-in var(--duration-slow) var(--ease-out); }
+
+@keyframes page-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.page__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: var(--space-8);
+    gap: var(--space-4);
+    flex-wrap: wrap;
+}
+
+.page__title { font-size: 28px; font-weight: 800; letter-spacing: -0.025em; color: var(--text-primary); margin-bottom: var(--space-1); }
+.page__subtitle { font-size: 14px; color: var(--text-muted); font-weight: 500; }
+.page__actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }

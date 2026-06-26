@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useTelegram } from '../hooks/useTelegram'
 
@@ -10,6 +10,8 @@ interface DashboardScreenProps {
 export function DashboardScreen({ trialExpiresAt, onBuySubscription }: DashboardScreenProps) {
   const { tg } = useTelegram()
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0 })
+  const [countdownAnnouncement, setCountdownAnnouncement] = useState('')
+  const lastAnnouncedThresholdRef = useRef<number | null>(null)
   const trafficUsed = 12.4
   const todayTraffic = 1.1
   const protectionTime = 52
@@ -29,6 +31,26 @@ export function DashboardScreen({ trialExpiresAt, onBuySubscription }: Dashboard
         const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
         const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
         setTimeLeft({ days, hours, minutes })
+
+        // Пороговые анонсы: «менее 24ч» и «1 час». Без них экранный диктор
+        // молчит весь триал и пользователь не знает, что время подходит к концу.
+        // Ref-хранилище гарантирует, что один порог анонсируется ровно один раз.
+        const totalHours = days * 24 + hours
+        let nextThreshold: number | null = null
+        if (totalHours <= 1) nextThreshold = 1
+        else if (totalHours <= 24) nextThreshold = 24
+
+        if (nextThreshold !== null && nextThreshold !== lastAnnouncedThresholdRef.current) {
+          lastAnnouncedThresholdRef.current = nextThreshold
+          setCountdownAnnouncement(
+            nextThreshold === 1
+              ? 'До окончания триала остался 1 час.'
+              : 'До окончания триала осталось менее 24 часов.'
+          )
+        }
+      } else if (lastAnnouncedThresholdRef.current !== 0) {
+        lastAnnouncedThresholdRef.current = 0
+        setCountdownAnnouncement('Пробный период закончился.')
       }
     }
 
@@ -59,7 +81,7 @@ export function DashboardScreen({ trialExpiresAt, onBuySubscription }: Dashboard
       >
         <div className="status-header">
           <div className="status-indicator">
-            <div className="status-dot" />
+            <div className="status-dot" aria-hidden="true" />
             <span className="status-text">Активен</span>
           </div>
           <div className="status-countdown">
@@ -67,12 +89,27 @@ export function DashboardScreen({ trialExpiresAt, onBuySubscription }: Dashboard
           </div>
         </div>
 
-        <div className="progress-container">
+        {/* Скрытая live-область для пороговых анонсов (<24ч, <1ч, истёк).
+            Видимый countdown обновляется каждую минуту — слишком часто для
+            диктора; здесь срабатывает только при пересечении порога. */}
+        <div className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">
+          {countdownAnnouncement}
+        </div>
+
+        <div
+          className="progress-container"
+          role="progressbar"
+          aria-valuenow={Math.round(progress)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Остаток триала: ${timeLeft.days} дн ${timeLeft.hours} ч`}
+        >
           <motion.div
             className="progress-bar"
             initial={{ width: 0 }}
             animate={{ width: `${progress}%` }}
             transition={{ duration: 1, delay: 0.3, ease: [0.32, 0.72, 0, 1] }}
+            aria-hidden="true"
           />
         </div>
 
@@ -118,19 +155,19 @@ export function DashboardScreen({ trialExpiresAt, onBuySubscription }: Dashboard
         <div className="card-title">Безопасность</div>
         <div className="security-items">
           <div className="security-item">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
               <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span>IP защищён</span>
           </div>
           <div className="security-item">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
               <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span>DNS защищён</span>
           </div>
           <div className="security-item">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
               <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span>Соединение зашифровано</span>

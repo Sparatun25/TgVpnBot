@@ -28,7 +28,7 @@ from core.metrics import (
 )
 from core.rate_limit import trial_limiter
 from database.models import Payment, PaymentStatus, PlanType, Subscription, User
-from services.amnezia import create_client_key
+from services.amnezia import create_client_key, revoke_client_key
 from services.payment_sbp import YooKassaPaymentError, create_sbp_payment
 
 logger = logging.getLogger(__name__)
@@ -374,10 +374,43 @@ async def activate_trial(
     )
     session.add(subscription)
 
-    # Устанавливаем время создания ключа для отслеживания неактивных
+    # Устанавливаем время создания ключа и сбрасываем флаги уведомлений —
+    # это старт нового lifecycle (audit #5, #6).
     user.key_created_at = now
+    user.notified_24h = False
+    user.notified_1h = False
+    user.notified_inactive_15m = False
+    user.notified_inactive_3h = False
+    user.notified_inactive_24h = False
 
-    await session.commit()
+    # Компенсирующее действие: если commit упадёт — ключ уже в Amnezia,
+    # но в БД его нет. Без отзыва он займёт IP из пула навсегда (audit #3).
+    try:
+        await session.commit()
+    except Exception as e:
+        logger.exception(
+            "Ошибка commit после создания ключа, отзываю ключ: user_id=%s, pub=%s",
+            user.id, client_pub_key[:16] + "...",
+        )
+        await session.rollback()
+        # Отзываем ключ в Amnezia, чтобы он не стал orphan.
+        # revoke_client_key ловит ВСЕ исключения внутри и возвращает False при
+        # инфраструктурном сбое — try/except вокруг него был бы dead code.
+        # Поэтому проверяем bool-результат. False означает orphan в Amnezia.
+        # Found by code-reviewer (CRITICAL #2).
+        revoked = await revoke_client_key(
+            client_pub_key, source="api", reason="db_commit_failed",
+        )
+        if not revoked:
+            logger.critical(
+                "ORPHAN_KEY: ключ %s остался в Amnezia после сбоя commit для user_id=%s — требуется ручная чистка через админку",
+                client_pub_key[:16] + "...", user.id,
+            )
+        trial_activations_total.labels(result="error").inc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Не удалось сохранить подписку",
+        ) from e
 
     trial_activations_total.labels(result="success").inc()
 
@@ -455,6 +488,10 @@ async def purchase_subscription(
     active_result = await session.execute(active_query)
     active_sub = active_result.scalar_one_or_none()
 
+    # Ветка: создаём новую подписку или продлеваем существующую.
+    # При создании — генерируем новый ключ (он будет в Amnezia ДО коммита БД,
+    # поэтому ниже нужен компенсирующий revoke на случай сбоя commit).
+    # При продлении — ключ переиспользуем (см. комментарий ниже).
     if active_sub:
         # Продлеваем существующую подписку
         # Если подписка заканчивается в будущем — добавляем дни к текущей дате окончания
@@ -470,6 +507,7 @@ async def purchase_subscription(
 
         subscription = active_sub
         action = "продлена"
+        client_pub_key: str | None = None  # нового ключа нет — revoke не понадобится
     else:
         # Создаём новую подписку
         # Генерируем ключ Amnezia
@@ -499,7 +537,48 @@ async def purchase_subscription(
     # Списываем деньги
     user.balance -= price
 
-    await session.commit()
+    # Сбрасываем флаги уведомлений: после оплаты/продления начинается новый
+    # lifecycle, и старые "24ч до конца" / "1ч до конца" флаги теряют смысл.
+    # Без сброса пользователь с продлённой подпиской не получит
+    # предупреждений об окончании (audit #5, #6).
+    user.notified_24h = False
+    user.notified_1h = False
+    # Если выдали новый ключ — сбрасываем и inactive-флаги, чтобы они
+    # не срабатывали по старой дате key_created_at.
+    if action == "активирована":
+        user.key_created_at = now
+        user.notified_inactive_15m = False
+        user.notified_inactive_3h = False
+        user.notified_inactive_24h = False
+
+    # Компенсирующее действие: если commit упадёт И мы создавали новый ключ —
+    # ключ уже в Amnezia, но в БД его нет. Без отзыва он займёт IP навсегда
+    # (audit #3). При продлении ключ не создаётся — компенсация не нужна.
+    try:
+        await session.commit()
+    except Exception as e:
+        logger.exception(
+            "Ошибка commit при покупке подписки, отзываю ключ: user_id=%s, pub=%s",
+            user.id, (client_pub_key or "<нет>")[:16] + "...",
+        )
+        await session.rollback()
+        if client_pub_key:
+            # revoke_client_key ловит ВСЕ исключения внутри и возвращает False при
+            # инфраструктурном сбое — try/except вокруг него был бы dead code.
+            # False = ключ остался в Amnezia (orphan). Требуется ручная чистка.
+            # Found by code-reviewer (CRITICAL #2).
+            revoked = await revoke_client_key(
+                client_pub_key, source="api", reason="db_commit_failed",
+            )
+            if not revoked:
+                logger.critical(
+                    "ORPHAN_KEY: ключ %s остался в Amnezia после сбоя commit покупки для user_id=%s — требуется ручная чистка через админку",
+                    client_pub_key[:16] + "...", user.id,
+                )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Не удалось сохранить подписку",
+        ) from e
 
     # Метрика: фиксируем факт покупки. action_label — английский аналог
     # русского "action" для совместимости с Prometheus label naming convention

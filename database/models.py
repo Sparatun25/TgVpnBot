@@ -55,6 +55,81 @@ class PaymentStatus(str, enum.Enum):
     CANCELED = "canceled"
 
 
+class BroadcastSegment(str, enum.Enum):
+    """Сегмент аудитории для рассылки.
+
+    Определяет, кому уйдёт сообщение. Используется в BroadcastCampaign.target_segment
+    и резолвится в SQL-запрос в services/broadcast.py:resolve_audience.
+
+    Значения хранятся как строки в PostgreSQL (native_enum=False), чтобы
+    добавление нового сегмента не требовало миграции enum-типа.
+    """
+
+    TRIAL = "trial"
+    """Активные триальные подписки."""
+
+    PAID = "paid"
+    """Активные платные подписки (MONTHLY/QUARTER/YEAR)."""
+
+    TRIAL_EXPIRING_24H = "trial_expiring_24h"
+    """Триалы, истекающие в ближайшие 24 часа (но ещё не истёкшие)."""
+
+    TRIAL_EXPIRING_1H = "trial_expiring_1h"
+    """Триалы, истекающие в ближайший час (но ещё не истёкшие)."""
+
+    EXPIRED = "expired"
+    """Подписки, истёкшие за последние 7 дней."""
+
+    INACTIVE_7D = "inactive_7d"
+    """Пользователи без активности (last_activity_at < now - 7d)."""
+
+    WITH_BALANCE = "with_balance"
+    """Пользователи с положительным балансом (кто-то может купить подписку)."""
+
+    ALL = "all"
+    """Все зарегистрированные пользователи."""
+
+
+class BroadcastStatus(str, enum.Enum):
+    """Жизненный цикл рассылки.
+
+    DRAFT → SENDING → COMPLETED
+                     → FAILED (если упали с невозможностью продолжить)
+                     → CANCELED (админ отменил во время отправки)
+    """
+
+    DRAFT = "draft"
+    """Создана, ещё не запущена. Можно редактировать и удалять."""
+
+    SENDING = "sending"
+    """Идёт отправка. Поля счётчиков обновляются по ходу."""
+
+    COMPLETED = "completed"
+    """Успешно завершена: все pending → sent/failed/blocked."""
+
+    CANCELED = "canceled"
+    """Отменена админом. Оставшиеся pending остаются pending (для истории)."""
+
+    FAILED = "failed"
+    """Критическая ошибка (например, бот сломался). Запустить заново нельзя."""
+
+
+class DeliveryStatus(str, enum.Enum):
+    """Статус доставки одного получателя."""
+
+    PENDING = "pending"
+    """Ещё не отправлено (только для canceled кампаний)."""
+
+    SENT = "sent"
+    """Успешно отправлено."""
+
+    FAILED = "failed"
+    """Ошибка отправки (сетевая, таймаут и т.п.)."""
+
+    BLOCKED = "blocked"
+    """Пользователь заблокировал бота (TelegramForbiddenError)."""
+
+
 class User(Base):
     """Пользователь Telegram."""
 
@@ -100,6 +175,21 @@ class User(Base):
     notified_inactive_15m: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     notified_inactive_3h: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     notified_inactive_24h: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Трафик через WireGuard-туннель. Обновляется фоновым сборщиком
+    # services/traffic_collector.py через wg show awg0 в контейнере AmneziaWG.
+    # BigInteger: даже при 1 Гбит/с аггрегат за год переваливает за 2^31 байт.
+    total_bytes_received: Mapped[int] = mapped_column(
+        BigInteger, default=0, nullable=False, server_default=text("0"),
+    )
+    total_bytes_sent: Mapped[int] = mapped_column(
+        BigInteger, default=0, nullable=False, server_default=text("0"),
+    )
+    # Момент последнего handshake с клиентом (UTC). NULL = ключ создан, но
+    # пользователь ещё ни разу не подключился.
+    last_handshake_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
 
     # Relationships
     subscriptions: Mapped[list["Subscription"]] = relationship(
@@ -252,4 +342,121 @@ class AdminSession(Base):
     )
     last_used_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+
+class BroadcastCampaign(Base):
+    """Кампания рассылки.
+
+    Описывает одну массовую отправку сообщения группе пользователей.
+    Жизненный цикл: DRAFT → SENDING → COMPLETED|CANCELED|FAILED.
+    Счётчики (total_recipients/sent_count/failed_count/blocked_count)
+    обновляются в services/broadcast.py по ходу отправки.
+
+    text_message хранится как HTML (с поддержкой {first_name}, {balance},
+    {days_left} — интерполяция в render_message).
+
+    Атрибуты:
+        title: внутреннее имя кампании для админа (до 100 символов).
+        message_text: HTML-текст сообщения.
+        target_segment: BroadcastSegment — кому слать.
+        status: BroadcastStatus — текущее состояние отправки.
+        created_by_tg_id: Telegram ID админа, создавшего кампанию.
+        total_recipients: сколько юзеров попали в аудиторию на момент старта.
+        sent_count: сколько доставлено успешно.
+        failed_count: ошибки (сеть, таймаут и т.п.).
+        blocked_count: юзер заблокировал бота.
+        started_at: NULL пока кампания в DRAFT.
+        finished_at: NULL пока не завершилась (COMPLETED/CANCELED/FAILED).
+    """
+
+    __tablename__ = "broadcast_campaigns"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(100), nullable=False)
+    message_text: Mapped[str] = mapped_column(Text, nullable=False)
+    target_segment: Mapped[BroadcastSegment] = mapped_column(
+        SAEnum(BroadcastSegment, name="broadcast_segment", native_enum=False, length=30),
+        nullable=False,
+    )
+    status: Mapped[BroadcastStatus] = mapped_column(
+        SAEnum(BroadcastStatus, name="broadcast_status", native_enum=False, length=20),
+        nullable=False,
+        server_default=text("'draft'"),
+    )
+    created_by_tg_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    total_recipients: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0"),
+    )
+    sent_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0"),
+    )
+    failed_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0"),
+    )
+    blocked_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
+    # Relationships
+    deliveries: Mapped[list["BroadcastDelivery"]] = relationship(
+        "BroadcastDelivery", back_populates="campaign", cascade="all, delete-orphan"
+    )
+
+
+class BroadcastDelivery(Base):
+    """Запись о доставке сообщения одному получателю.
+
+    Одна строка = один юзер в аудитории кампании. Создаётся при старте
+    кампании (для всех юзеров аудитории сразу), обновляется по ходу
+    отправки. После завершения кампании хранится как история.
+
+    user_id — nullable + ON DELETE SET NULL, чтобы удаление юзера из БД
+    не каскадировало на историю рассылок (юзер мог отписаться от бота,
+    но история кому и когда слали — полезна для админа).
+
+    user_tg_id хранится денормализованным, чтобы можно было показать
+    статистику даже после удаления user-записи.
+    """
+
+    __tablename__ = "broadcast_deliveries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    campaign_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("broadcast_campaigns.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    user_tg_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    status: Mapped[DeliveryStatus] = mapped_column(
+        SAEnum(DeliveryStatus, name="delivery_status", native_enum=False, length=20),
+        nullable=False,
+        server_default=text("'pending'"),
+    )
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
+    # Relationships
+    campaign: Mapped["BroadcastCampaign"] = relationship(
+        "BroadcastCampaign", back_populates="deliveries"
     )

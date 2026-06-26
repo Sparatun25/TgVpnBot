@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
@@ -15,9 +15,29 @@ from sqlalchemy.orm import selectinload
 
 from api.auth import get_current_user_tg_id, security
 from core.config import settings
-from core.db import get_session
-from database.models import AdminSession, Payment, PaymentStatus, PlanType, Subscription, User
+from core.db import async_session_factory, get_session
+from database.models import (
+    AdminSession,
+    BroadcastCampaign,
+    BroadcastDelivery,
+    BroadcastSegment,
+    BroadcastStatus,
+    DeliveryStatus,
+    Payment,
+    PaymentStatus,
+    PlanType,
+    Subscription,
+    User,
+)
 from services.amnezia import create_client_key, revoke_client_key
+from services.broadcast import (
+    TEMPLATE_VARIABLES,
+    cancel_campaign,
+    count_all_segments,
+    resolve_audience,
+    start_campaign_in_background,
+)
+from services.traffic_collector import get_user_traffic
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +135,16 @@ class MetricsResponse(BaseModel):
     active_subscriptions: int = Field(description="Активных подписок (все типы)")
     active_trials: int = Field(description="Активных триалов")
     total_deposits_kopecks: int = Field(description="Сумма успешных пополнений, коп.")
+    total_traffic_rx_bytes: int = Field(
+        default=0, description="Суммарный входящий трафик всех пользователей, байт"
+    )
+    total_traffic_tx_bytes: int = Field(
+        default=0, description="Суммарный исходящий трафик всех пользователей, байт"
+    )
+    active_now: int = Field(
+        default=0,
+        description="Пользователи с handshake в последние 3 минуты (онлайн прямо сейчас)",
+    )
     top_referrers: list[dict] = Field(description="Топ рефералов")
 
 
@@ -130,6 +160,43 @@ class SubscriptionOut(BaseModel):
     expires_at: str
     is_active: bool
     created_at: str
+    # Трафик через WireGuard-туннель (из User.total_bytes_*). Обновляется
+    # фоновым сборщиком каждые N секунд (см. api/main.py lifespan).
+    total_bytes_received: int = Field(
+        default=0, description="Суммарный скачанный трафик, байт"
+    )
+    total_bytes_sent: int = Field(
+        default=0, description="Суммарный загруженный трафик, байт"
+    )
+    last_handshake_at: str | None = Field(
+        default=None,
+        description="UTC ISO timestamp последнего handshake клиента. NULL если ещё не подключался.",
+    )
+    # Флаги уведомлений о скором окончании триала (из User.notified_*).
+    # Admin UI рисует бейджи: «🔔 24ч» если уже отправлено, пусто если нет.
+    # Полезно для проверки «кому из истекающих триалов уже ушло уведомление».
+    notified_24h: bool = Field(
+        default=False,
+        description="Отправлено ли уведомление «24ч до окончания»",
+    )
+    notified_1h: bool = Field(
+        default=False,
+        description="Отправлено ли уведомление «1ч до окончания»",
+    )
+
+
+class UserTrafficResponse(BaseModel):
+    """Детальный трафик пользователя для UI админки."""
+
+    tg_id: int
+    username: str | None = None
+    total_bytes_received: int
+    total_bytes_sent: int
+    last_handshake_at: str | None = None
+    last_activity_at: str | None = None
+    subscription_active: bool
+    subscription_expires_at: str | None = None
+    subscription_plan_type: str | None = None
 
 
 class SubscriptionsListResponse(BaseModel):
@@ -193,6 +260,117 @@ class ClearAllRequest(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────
+# Схемы для рассылок (broadcasts)
+# ─────────────────────────────────────────────────────────
+
+class BroadcastCreateRequest(BaseModel):
+    """Создание новой кампании рассылки.
+
+    На этом этапе создаётся DRAFT-кампания: админ видит размер аудитории
+    в preview, может отредактировать текст, и только потом нажимает «Запустить».
+    """
+
+    title: str = Field(
+        min_length=1, max_length=100,
+        description="Внутреннее имя кампании (видно только админу)",
+    )
+    message_text: str = Field(
+        min_length=1, max_length=4096,
+        description="HTML-текст сообщения. Поддерживает переменные: "
+                    "{first_name}, {username}, {balance}, {days_left}, {plan_type}",
+    )
+    target_segment: BroadcastSegment = Field(
+        description="Сегмент получателей: trial, paid, expired, etc.",
+    )
+
+
+class BroadcastCampaignOut(BaseModel):
+    """Кампания в списке/детальном просмотре."""
+
+    id: int
+    title: str
+    message_text: str
+    target_segment: str
+    status: str
+    created_by_tg_id: int
+    total_recipients: int
+    sent_count: int
+    failed_count: int
+    blocked_count: int
+    created_at: str
+    started_at: str | None = None
+    finished_at: str | None = None
+
+    @classmethod
+    def from_model(cls, c: BroadcastCampaign) -> "BroadcastCampaignOut":
+        return cls(
+            id=c.id,
+            title=c.title,
+            message_text=c.message_text,
+            target_segment=c.target_segment.value,
+            status=c.status.value,
+            created_by_tg_id=c.created_by_tg_id,
+            total_recipients=c.total_recipients,
+            sent_count=c.sent_count,
+            failed_count=c.failed_count,
+            blocked_count=c.blocked_count,
+            created_at=c.created_at.isoformat(),
+            started_at=c.started_at.isoformat() if c.started_at else None,
+            finished_at=c.finished_at.isoformat() if c.finished_at else None,
+        )
+
+
+class BroadcastListResponse(BaseModel):
+    """Список кампаний с пагинацией."""
+
+    items: list[BroadcastCampaignOut]
+    total: int
+    page: int
+    per_page: int
+
+
+class BroadcastDeliveryOut(BaseModel):
+    """Один получатель в детальном просмотре кампании."""
+
+    id: int
+    user_tg_id: int
+    username: str | None = None
+    status: str
+    error_message: str | None = None
+    created_at: str
+    sent_at: str | None = None
+
+
+class BroadcastDeliveryListResponse(BaseModel):
+    """Список получателей кампании с пагинацией."""
+
+    items: list[BroadcastDeliveryOut]
+    total: int
+    page: int
+    per_page: int
+    by_status: dict[str, int] = Field(
+        description="Подсчёт по статусам: pending/sent/failed/blocked",
+    )
+
+
+class BroadcastSegmentStatsResponse(BaseModel):
+    """Количество юзеров в каждом сегменте (для UI preview)."""
+
+    segments: dict[str, int]
+    template_variables: dict[str, str] = Field(
+        description="Доступные переменные для шаблона сообщения",
+    )
+
+
+class BroadcastActionResponse(BaseModel):
+    """Ответ на start/cancel/delete."""
+
+    id: int
+    status: str
+    message: str
+
+
+# ─────────────────────────────────────────────────────────
 # Эндпоинты
 # ─────────────────────────────────────────────────────────
 
@@ -241,6 +419,26 @@ async def get_metrics(
     )
     total_deposits_kopecks = (await session.execute(total_deposits_q)).scalar_one()
 
+    # Суммарный трафик всех пользователей через WireGuard. Один запрос с SUM по всем
+    # юзерам — дешевле, чем джойнить с активными подписками (трафик хранится на User,
+    # а не на Subscription).
+    total_traffic_q = select(
+        func.coalesce(func.sum(User.total_bytes_received), 0).label("rx"),
+        func.coalesce(func.sum(User.total_bytes_sent), 0).label("tx"),
+    )
+    traffic_row = (await session.execute(total_traffic_q)).one()
+    total_traffic_rx_bytes = int(traffic_row.rx or 0)
+    total_traffic_tx_bytes = int(traffic_row.tx or 0)
+
+    # "Онлайн прямо сейчас" — пользователи с handshake в последние 3 минуты.
+    # WireGuard persistent keepalive у нас 25 сек, так что 3 минуты — щедрый порог:
+    # даже если соединение чуть подвисло, пользователь всё ещё считается активным.
+    three_min_ago = now - timedelta(minutes=3)
+    active_now_q = select(func.count(User.id)).where(
+        User.last_handshake_at >= three_min_ago,
+    )
+    active_now = (await session.execute(active_now_q)).scalar_one()
+
     # Топ-5 рефералов (по количеству приглашённых).
     # Один запрос с JOIN вместо N+1: считаем рефералов в подзапросе,
     # затем джойним с User по tg_id, чтобы получить username без N+1.
@@ -280,6 +478,9 @@ async def get_metrics(
         active_subscriptions=active_subscriptions,
         active_trials=active_trials,
         total_deposits_kopecks=total_deposits_kopecks,
+        total_traffic_rx_bytes=total_traffic_rx_bytes,
+        total_traffic_tx_bytes=total_traffic_tx_bytes,
+        active_now=active_now,
         top_referrers=top_referrers,
     )
 
@@ -358,6 +559,15 @@ async def list_subscriptions(
             expires_at=sub.expires_at.isoformat(),
             is_active=sub.is_active,
             created_at=sub.created_at.isoformat(),
+            total_bytes_received=sub.user.total_bytes_received or 0,
+            total_bytes_sent=sub.user.total_bytes_sent or 0,
+            last_handshake_at=(
+                sub.user.last_handshake_at.isoformat()
+                if sub.user.last_handshake_at
+                else None
+            ),
+            notified_24h=sub.user.notified_24h,
+            notified_1h=sub.user.notified_1h,
         )
         for sub in subs
     ]
@@ -450,9 +660,13 @@ async def revoke_subscription(
         )
 
     if not sub.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Подписка уже неактивна",
+        # Возможный orphan: ключ может ещё быть в Amnezia (scheduler выставил
+        # is_active=False ДО revoke — см. services/amnezia.py:check_expired_subscriptions).
+        # Не отказываем — даём админу шанс дочистить ключ в Amnezia.
+        logger.warning(
+            "Админ tg_id=%s повторно вызывает revoke для неактивной подписки id=%s "
+            "(uuid=%s) — возможна чистка orphan",
+            admin_tg_id, sub.id, sub.uuid[:16] + "...",
         )
 
     # Отзываем ключ через Amnezia
@@ -588,6 +802,27 @@ async def topup_user_balance(
     )
 
 
+@router.get("/users/{tg_id}/traffic", response_model=UserTrafficResponse)
+async def get_user_traffic_endpoint(
+    tg_id: int,
+    admin_tg_id: Annotated[int, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> UserTrafficResponse:
+    """Детальная информация о трафике конкретного пользователя.
+
+    Возвращает суммарный RX/TX через WireGuard-туннель, время последнего
+    handshake (если есть), и связанную подписку. Используется в UI админки
+    для детального просмотра карточки пользователя.
+    """
+    traffic = await get_user_traffic(session, tg_id)
+    if traffic is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Пользователь не найден",
+        )
+    return UserTrafficResponse(**traffic)
+
+
 # ─────────────────────────────────────────────────────────
 # Debug endpoint для тестирования vpn:// ключей
 # ─────────────────────────────────────────────────────────
@@ -630,3 +865,373 @@ async def debug_vpn_key(
             "error": str(e),
             "error_type": type(e).__name__,
         }
+
+
+# ─────────────────────────────────────────────────────────
+# Рассылки (broadcasts)
+# ─────────────────────────────────────────────────────────
+
+@router.post("/broadcasts", response_model=BroadcastCampaignOut, status_code=status.HTTP_201_CREATED)
+async def create_broadcast(
+    body: BroadcastCreateRequest,
+    admin_tg_id: Annotated[int, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BroadcastCampaignOut:
+    """
+    Создать новую кампанию рассылки в статусе DRAFT.
+
+    На этом этапе:
+    - Резолвится аудитория по сегменту (resolve_audience)
+    - Создаётся BroadcastCampaign (status=draft)
+    - Создаются BroadcastDelivery строки для каждого получателя (status=pending)
+
+    Кампания остаётся в DRAFT до явного вызова /start. Админ может проверить
+    размер аудитории и текст, удалить и создать заново, прежде чем запускать.
+    """
+    # Резолвим аудиторию — нужно знать размер ДО создания, чтобы вернуть
+    # total_recipients сразу. Если сегмент пустой — отказываем, чтобы не
+    # плодить пустые кампании.
+    audience = await resolve_audience(session, body.target_segment)
+    if not audience:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Сегмент '{body.target_segment.value}' не содержит ни одного пользователя",
+        )
+
+    # Создаём кампанию
+    campaign = BroadcastCampaign(
+        title=body.title,
+        message_text=body.message_text,
+        target_segment=body.target_segment,
+        status=BroadcastStatus.DRAFT,
+        created_by_tg_id=admin_tg_id,
+        total_recipients=len(audience),
+    )
+    session.add(campaign)
+    await session.flush()  # получаем campaign.id
+
+    # Создаём BroadcastDelivery для каждого получателя.
+    # bulk_insert_mappings быстрее, чем insert() в цикле, потому что
+    # генерирует один INSERT с множеством VALUES-строк вместо N запросов.
+    await session.execute(
+        BroadcastDelivery.__table__.insert(),
+        [
+            {
+                "campaign_id": campaign.id,
+                "user_id": u["user_id"],
+                "user_tg_id": u["tg_id"],
+                "status": DeliveryStatus.PENDING.value,
+            }
+            for u in audience
+        ],
+    )
+    await session.commit()
+    await session.refresh(campaign)
+
+    logger.info(
+        "broadcast_created id=%s segment=%s recipients=%s admin=%s",
+        campaign.id, campaign.target_segment, len(audience), admin_tg_id,
+    )
+
+    return BroadcastCampaignOut.from_model(campaign)
+
+
+@router.get("/broadcasts", response_model=BroadcastListResponse)
+async def list_broadcasts(
+    admin_tg_id: Annotated[int, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    page: int = Query(ge=1, default=1),
+    per_page: int = Query(ge=1, le=100, default=20),
+    status_filter: str | None = Query(None, alias="status"),
+) -> BroadcastListResponse:
+    """Список всех кампаний рассылок с пагинацией и фильтром по статусу."""
+    base_query = select(BroadcastCampaign).order_by(BroadcastCampaign.created_at.desc())
+    count_query = select(func.count(BroadcastCampaign.id))
+
+    if status_filter:
+        try:
+            status_enum = BroadcastStatus(status_filter)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Неизвестный статус: {status_filter}",
+            )
+        base_query = base_query.where(BroadcastCampaign.status == status_enum)
+        count_query = count_query.where(BroadcastCampaign.status == status_enum)
+
+    total = (await session.execute(count_query)).scalar_one()
+    offset = (page - 1) * per_page
+    items_q = base_query.offset(offset).limit(per_page)
+    items = (await session.execute(items_q)).scalars().all()
+
+    return BroadcastListResponse(
+        items=[BroadcastCampaignOut.from_model(c) for c in items],
+        total=total,
+        page=page,
+        per_page=per_page,
+    )
+
+
+@router.get("/broadcasts/segments/stats", response_model=BroadcastSegmentStatsResponse)
+async def get_broadcast_segment_stats(
+    admin_tg_id: Annotated[int, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BroadcastSegmentStatsResponse:
+    """Количество юзеров в каждом сегменте + список переменных шаблона.
+
+    Используется в UI на странице создания рассылки: показывает «Trial: 412»,
+    «Paid: 89» и т.п. для быстрого выбора аудитории.
+    """
+    segments = await count_all_segments(session)
+    return BroadcastSegmentStatsResponse(
+        segments=segments,
+        template_variables=TEMPLATE_VARIABLES,
+    )
+
+
+@router.get("/broadcasts/{campaign_id}", response_model=BroadcastCampaignOut)
+async def get_broadcast(
+    campaign_id: int,
+    admin_tg_id: Annotated[int, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BroadcastCampaignOut:
+    """Детальная информация о кампании (без списка получателей)."""
+    campaign = (
+        await session.execute(
+            select(BroadcastCampaign).where(BroadcastCampaign.id == campaign_id)
+        )
+    ).scalar_one_or_none()
+
+    if campaign is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Кампания не найдена",
+        )
+
+    return BroadcastCampaignOut.from_model(campaign)
+
+
+@router.get("/broadcasts/{campaign_id}/deliveries", response_model=BroadcastDeliveryListResponse)
+async def get_broadcast_deliveries(
+    campaign_id: int,
+    admin_tg_id: Annotated[int, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+    page: int = Query(ge=1, default=1),
+    per_page: int = Query(ge=1, le=200, default=50),
+    status_filter: str | None = Query(None, alias="status"),
+) -> BroadcastDeliveryListResponse:
+    """Список получателей кампании с фильтром по статусу доставки.
+
+    Используется в UI для просмотра «кому уже отправлено», «кто заблокировал бота»
+    и т.п. Соединяемся с User, чтобы достать username для UI без N+1.
+    """
+    # Проверяем существование кампании
+    campaign = (
+        await session.execute(
+            select(BroadcastCampaign.id).where(BroadcastCampaign.id == campaign_id)
+        )
+    ).scalar_one_or_none()
+    if campaign is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Кампания не найдена",
+        )
+
+    base_query = (
+        select(BroadcastDelivery)
+        .join(User, User.id == BroadcastDelivery.user_id, isouter=True)
+        .where(BroadcastDelivery.campaign_id == campaign_id)
+    )
+    count_query = select(func.count(BroadcastDelivery.id)).where(
+        BroadcastDelivery.campaign_id == campaign_id,
+    )
+
+    if status_filter:
+        try:
+            status_enum = DeliveryStatus(status_filter)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Неизвестный статус: {status_filter}",
+            )
+        base_query = base_query.where(BroadcastDelivery.status == status_enum)
+        count_query = count_query.where(BroadcastDelivery.status == status_enum)
+
+    total = (await session.execute(count_query)).scalar_one()
+    offset = (page - 1) * per_page
+    items_q = (
+        base_query
+        .order_by(BroadcastDelivery.id)
+        .offset(offset)
+        .limit(per_page)
+    )
+    rows = (await session.execute(items_q)).all()
+
+    # Подсчёт по статусам — отдельный запрос с группировкой. Делается одним
+    # вызовом вместо четырёх COUNT-ов.
+    by_status_q = (
+        select(BroadcastDelivery.status, func.count(BroadcastDelivery.id))
+        .where(BroadcastDelivery.campaign_id == campaign_id)
+        .group_by(BroadcastDelivery.status)
+    )
+    by_status_rows = (await session.execute(by_status_q)).all()
+    by_status = {s.value: cnt for s, cnt in by_status_rows}
+
+    items = [
+        BroadcastDeliveryOut(
+            id=row[0].id,
+            user_tg_id=row[0].user_tg_id,
+            username=row[1].username if row[1] else None,
+            status=row[0].status.value,
+            error_message=row[0].error_message,
+            created_at=row[0].created_at.isoformat(),
+            sent_at=row[0].sent_at.isoformat() if row[0].sent_at else None,
+        )
+        for row in rows
+    ]
+
+    return BroadcastDeliveryListResponse(
+        items=items,
+        total=total,
+        page=page,
+        per_page=per_page,
+        by_status=by_status,
+    )
+
+
+@router.post("/broadcasts/{campaign_id}/start", response_model=BroadcastActionResponse)
+async def start_broadcast(
+    campaign_id: int,
+    admin_tg_id: Annotated[int, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BroadcastActionResponse:
+    """
+    Запустить рассылку.
+
+    Запускает фоновую asyncio-задачу (services/broadcast.start_campaign).
+    Возвращает 202 Accepted сразу, не дожидаясь окончания отправки.
+    UI опрашивает /broadcasts/{id} для обновления статуса и счётчиков.
+
+    Повторный вызов на SENDING/COMPLETED/CANCELED → 409 Conflict.
+    """
+    campaign = (
+        await session.execute(
+            select(BroadcastCampaign).where(BroadcastCampaign.id == campaign_id)
+        )
+    ).scalar_one_or_none()
+
+    if campaign is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Кампания не найдена",
+        )
+
+    if campaign.status != BroadcastStatus.DRAFT:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Кампания в статусе '{campaign.status.value}', нельзя запустить",
+        )
+
+    # Запускаем в фоне. start_campaign сам переведёт кампанию в SENDING
+    # (если что-то не так — статус не изменится, останется DRAFT, и админ
+    # увидит это при следующем опросе).
+    start_campaign_in_background(campaign_id)
+
+    logger.info(
+        "broadcast_start_requested campaign_id=%s admin=%s recipients=%s",
+        campaign_id, admin_tg_id, campaign.total_recipients,
+    )
+
+    return BroadcastActionResponse(
+        id=campaign_id,
+        status=BroadcastStatus.SENDING.value,
+        message=f"Рассылка запущена ({campaign.total_recipients} получателей)",
+    )
+
+
+@router.post("/broadcasts/{campaign_id}/cancel", response_model=BroadcastActionResponse)
+async def cancel_broadcast(
+    campaign_id: int,
+    admin_tg_id: Annotated[int, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BroadcastActionResponse:
+    """Отменить активную рассылку.
+
+    Ставит Event в services/broadcast._cancel_events — фоновая задача
+    завершит текущий батч и выйдет. Если кампания уже завершена —
+    возвращает 409 Conflict.
+    """
+    # Проверяем существование
+    exists = (
+        await session.execute(
+            select(BroadcastCampaign.id).where(BroadcastCampaign.id == campaign_id)
+        )
+    ).scalar_one_or_none()
+    if exists is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Кампания не найдена",
+        )
+
+    ok = await cancel_campaign(campaign_id)
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Кампания уже завершена и не может быть отменена",
+        )
+
+    logger.info(
+        "broadcast_cancel_requested campaign_id=%s admin=%s",
+        campaign_id, admin_tg_id,
+    )
+
+    return BroadcastActionResponse(
+        id=campaign_id,
+        status=BroadcastStatus.CANCELED.value,
+        message="Рассылка отменена",
+    )
+
+
+@router.delete("/broadcasts/{campaign_id}", response_model=BroadcastActionResponse)
+async def delete_broadcast(
+    campaign_id: int,
+    admin_tg_id: Annotated[int, Depends(require_admin)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> BroadcastActionResponse:
+    """Удалить кампанию из истории.
+
+    Нельзя удалить кампанию в SENDING — сначала отмените. Каскадно удаляются
+    все BroadcastDelivery (cascade="all, delete-orphan" в модели).
+    """
+    campaign = (
+        await session.execute(
+            select(BroadcastCampaign).where(BroadcastCampaign.id == campaign_id)
+        )
+    ).scalar_one_or_none()
+
+    if campaign is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Кампания не найдена",
+        )
+
+    if campaign.status == BroadcastStatus.SENDING:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Нельзя удалить рассылку в процессе отправки — сначала отмените",
+        )
+
+    title = campaign.title
+    await session.delete(campaign)
+    await session.commit()
+
+    logger.info(
+        "broadcast_deleted campaign_id=%s admin=%s title=%s",
+        campaign_id, admin_tg_id, title,
+    )
+
+    return BroadcastActionResponse(
+        id=campaign_id,
+        status="deleted",
+        message=f"Кампания «{title}» удалена",
+    )

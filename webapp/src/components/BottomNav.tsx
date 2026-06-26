@@ -63,6 +63,7 @@ export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
   return (
     <motion.nav
       className="bottom-nav"
+      aria-label="Основная навигация"
       initial={{ y: 100 }}
       animate={{ y: 0 }}
       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
@@ -72,13 +73,16 @@ export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
           key={tab.id}
           className={`nav-tab ${activeTab === tab.id ? 'active' : ''}`}
           onClick={() => handleTabClick(tab.id)}
+          aria-current={activeTab === tab.id ? 'page' : undefined}
+          aria-label={tab.label}
         >
-          <div className="nav-tab-icon">{tab.icon}</div>
+          <div className="nav-tab-icon" aria-hidden="true">{tab.icon}</div>
           <span className="nav-tab-label">{tab.label}</span>
           {activeTab === tab.id && (
             <motion.div
               className="nav-tab-indicator"
               layoutId="nav-indicator"
+              aria-hidden="true"
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
             />
           )}

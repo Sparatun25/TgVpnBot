@@ -3,11 +3,22 @@ set -e
 
 echo "🚀 OnyxVpn Backend Starting..."
 
-# Добавляем appuser в docker группу (если сокет есть)
+# Добавляем appuser в docker группу (если сокет есть).
+#
+# Базовый образ Debian уже содержит группу docker с дефолтным GID,
+# который может не совпадать с GID хоста (например, base=102, host=120).
+# Без пересоздания группы appuser добавляется в docker (102), а сокет
+# принадлежит группе 120 → permission denied при docker exec.
+# Поэтому сначала проверяем совпадение GID и при расхождении пересоздаём группу.
 if [ -S /var/run/docker.sock ]; then
   echo "🐳 Настройка доступа к Docker..."
   DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)
-  if ! getent group docker > /dev/null 2>&1; then
+  EXISTING_DOCKER_GID=$(getent group docker | cut -d: -f3 || echo "")
+  if [ -z "$EXISTING_DOCKER_GID" ]; then
+    groupadd -g "$DOCKER_GID" docker
+  elif [ "$EXISTING_DOCKER_GID" != "$DOCKER_GID" ]; then
+    echo "⚠️  Группа docker имеет GID=$EXISTING_DOCKER_GID, требуется GID=$DOCKER_GID. Пересоздаём..."
+    groupdel docker
     groupadd -g "$DOCKER_GID" docker
   fi
   usermod -aG docker appuser

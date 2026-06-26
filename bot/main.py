@@ -15,7 +15,7 @@ from core.config import settings
 from core.logging import get_logger, setup_logging
 from core.middleware import bind_request_id_for_update
 from database.init_db import init_db, check_connection
-from bot.handlers import start
+from bot.handlers import start, menu
 from bot.services.scheduler import start_notification_scheduler
 
 # Настройка логирования ДО любых других импортов, которые могут логировать.
@@ -79,6 +79,7 @@ async def main() -> None:
 
     # Подключение роутеров
     dp.include_router(start.router)
+    dp.include_router(menu.router)
 
     # Запуск планировщика уведомлений
     scheduler = await start_notification_scheduler(bot)

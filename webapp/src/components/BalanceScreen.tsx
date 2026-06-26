@@ -80,10 +80,19 @@ export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) 
       clearInterval(interval)
       // Если polling провисел POLL_TIMEOUT_MS без успеха — переводим UI
       // в timeout, иначе юзер будет бесконечно смотреть на спиннер.
-      if (isMountedRef.current && paymentStatus === 'pending') {
-        setPaymentStatus('timeout')
-        tg?.HapticFeedback?.notificationOccurred('error')
-      }
+      // Используем функциональную форму setPaymentStatus, чтобы проверить
+      // АКТУАЛЬНОЕ состояние, а не snapshot из closure. Без этого, если за
+      // 120 с polling успел перевести status в 'success', эффект
+      // перерендерился с новым значением, но старый overallTimeout всё
+      // ещё в очереди — он бы перезаписал 'success' обратно в 'timeout'.
+      if (!isMountedRef.current) return
+      setPaymentStatus(prev => {
+        if (prev === 'pending') {
+          tg?.HapticFeedback?.notificationOccurred('error')
+          return 'timeout'
+        }
+        return prev
+      })
     }, POLL_TIMEOUT_MS)
 
     return () => {
@@ -166,8 +175,10 @@ export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) 
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
+            role="status"
+            aria-live="polite"
           >
-            <div className="pending-spinner" />
+            <div className="pending-spinner" aria-hidden="true" />
             <span>Ожидание подтверждения оплаты...</span>
             <button
               className="balance-pending-cancel"
@@ -211,8 +222,10 @@ export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) 
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.3 }}
+            role="status"
+            aria-live="polite"
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
               <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span>Баланс пополнен!</span>
@@ -227,16 +240,21 @@ export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) 
         transition={{ duration: 0.4, delay: 0.2 }}
       >
         <h3 className="topup-title">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <rect x="2" y="5" width="20" height="14" rx="2" />
             <path d="M2 10H22" />
           </svg>
           Пополнить через СБП
         </h3>
 
+        <label htmlFor="topup-amount" className="visually-hidden">
+          Сумма пополнения в рублях
+        </label>
         <div className="topup-input-wrapper">
           <input
+            id="topup-amount"
             type="number"
+            inputMode="numeric"
             className="topup-input"
             placeholder="Введите сумму"
             value={amount}
@@ -244,9 +262,16 @@ export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) 
             min="10"
             step="10"
             disabled={isProcessing || paymentStatus !== 'idle'}
+            aria-describedby={amount !== '' && parseInt(amount) < 10 ? 'topup-amount-hint' : undefined}
+            aria-invalid={amount !== '' && parseInt(amount) < 10 ? true : undefined}
           />
-          <span className="topup-input-suffix">₽</span>
+          <span className="topup-input-suffix" aria-hidden="true">₽</span>
         </div>
+        {amount !== '' && parseInt(amount) < 10 && (
+          <div id="topup-amount-hint" className="topup-amount-hint">
+            Минимальная сумма пополнения — 10 ₽
+          </div>
+        )}
 
         <div className="topup-quick-amounts">
           {quickAmounts.map((value) => (
@@ -285,7 +310,7 @@ export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) 
         transition={{ duration: 0.4, delay: 0.4 }}
       >
         <div className="balance-info-item">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
             <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <div>
@@ -294,7 +319,7 @@ export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) 
           </div>
         </div>
         <div className="balance-info-item">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
             <path d="M12 22S8 18 8 12V6L12 2L16 6V12C16 18 12 22 12 22Z" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <div>

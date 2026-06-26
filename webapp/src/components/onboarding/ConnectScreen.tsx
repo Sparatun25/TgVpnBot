@@ -134,25 +134,25 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
         Подключите Onyx VPN
       </motion.h2>
 
-      <motion.div
+      <motion.ol
         className="connect-steps"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.2 }}
       >
-        <div className="connect-step">
+        <li className="connect-step">
           <div className="step-number">1</div>
           <div className="step-text">Нажмите кнопку ниже</div>
-        </div>
-        <div className="connect-step">
+        </li>
+        <li className="connect-step">
           <div className="step-number">2</div>
           <div className="step-text">Ключ автоматически скопируется</div>
-        </div>
-        <div className="connect-step">
+        </li>
+        <li className="connect-step">
           <div className="step-number">3</div>
           <div className="step-text">Amnezia VPN откроется автоматически</div>
-        </div>
-      </motion.div>
+        </li>
+      </motion.ol>
 
       {showFallback && (
         <motion.div
@@ -167,9 +167,10 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
             value={connectionUrl}
             readOnly
             rows={4}
+            aria-label="Ключ подключения VPN"
           />
           <button className="fallback-copy-button" onClick={handleManualCopy}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <rect x="9" y="9" width="13" height="13" rx="2" />
               <path d="M5 15H4C2.9 15 2 14.1 2 13V4C2 2.9 2.9 2 3 2H13C14.1 2 15 2.9 15 4V5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -188,7 +189,7 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
             transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
           >
             <div className="launch-failed-icon">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2" aria-hidden="true">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M12 8V12M12 16H12.01" strokeLinecap="round" />
               </svg>
@@ -225,7 +226,7 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
       >
         <summary className="help-toggle">
           <span>Не получилось автоматически?</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <path d="M6 9L12 15L18 9" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </summary>

@@ -55,7 +55,7 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
           />
 
           {/* Концентрические "сигналы" — намёк на защиту данных */}
-          <svg className="welcome-orb__rings" viewBox="0 0 200 200" fill="none">
+          <svg className="welcome-orb__rings" viewBox="0 0 200 200" fill="none" aria-hidden="true">
             <motion.circle
               cx="100" cy="100" r="92"
               stroke="rgba(255,255,255,0.10)"
@@ -139,7 +139,7 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
 
       {/* Преимущества — три карточки с собственными иконками.
           Здесь нет эмодзи, только рукотворные SVG под эстетику бренда. */}
-      <motion.div
+      <motion.ul
         className="welcome-benefits"
         initial="hidden"
         animate="visible"
@@ -164,7 +164,7 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
           hint="не для нас"
           icon={<GlobeIcon />}
         />
-      </motion.div>
+      </motion.ul>
 
       {/* Карточка триала — визуально показывает ценность и следующий шаг */}
       <motion.div
@@ -197,7 +197,7 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
           <TrialFeature delay={1.39}>Активация за 1 минуту</TrialFeature>
         </ul>
 
-        <div className="welcome-trial-card__progress">
+        <div className="welcome-trial-card__progress" aria-hidden="true">
           <motion.div
             className="welcome-trial-card__progress-bar"
             initial={{ width: '0%' }}
@@ -254,7 +254,7 @@ function BenefitCard({
   variant?: 'primary'
 }) {
   return (
-    <motion.div
+    <motion.li
       className={`benefit-card${variant === 'primary' ? ' benefit-card--primary' : ''}`}
       variants={{
         hidden: { opacity: 0, y: 14 },
@@ -268,7 +268,7 @@ function BenefitCard({
         <div className="benefit-card__title">{title}</div>
         <div className="benefit-card__hint">{hint}</div>
       </div>
-    </motion.div>
+    </motion.li>
   )
 }
 

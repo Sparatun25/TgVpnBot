@@ -1,0 +1,268 @@
+/* OnyxVpn Admin — Buttons, Badges, Table */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: 10px var(--space-4);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-out);
+    border: 1px solid transparent;
+    min-height: 38px;
+    white-space: nowrap;
+    letter-spacing: -0.005em;
+}
+
+.btn:active:not(:disabled) { transform: scale(0.97); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn--primary { background: var(--brand); color: white; box-shadow: 0 4px 12px var(--brand-glow-soft); }
+.btn--primary:hover:not(:disabled) { background: var(--brand-dark); box-shadow: 0 6px 16px var(--brand-glow); }
+
+.btn--secondary { background: var(--bg-elevated-2); color: var(--text-primary); border-color: var(--border); }
+.btn--secondary:hover:not(:disabled) { background: var(--bg-base); border-color: var(--border-bright); }
+
+.btn--ghost { background: transparent; color: var(--text-secondary); }
+.btn--ghost:hover:not(:disabled) { background: var(--bg-elevated-2); color: var(--text-primary); }
+
+.btn--danger { background: var(--danger-bg); color: var(--danger); border-color: rgba(239, 68, 68, 0.3); }
+.btn--danger:hover:not(:disabled) { background: var(--danger); color: white; border-color: var(--danger); }
+
+.btn--icon { width: 32px; height: 32px; padding: 0; min-height: 32px; }
+.btn--sm { padding: 6px var(--space-3); font-size: 12px; min-height: 30px; }
+.btn--full { width: 100%; }
+
+.btn--loading { position: relative; color: transparent !important; pointer-events: none; }
+.btn--loading::after {
+    content: '';
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    color: white;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1.4;
+}
+
+.badge__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.badge--success { background: var(--success-bg); color: var(--success); }
+.badge--danger { background: var(--danger-bg); color: var(--danger); }
+.badge--warning { background: var(--warning-bg); color: var(--warning); }
+.badge--info { background: var(--info-bg); color: var(--info); }
+.badge--brand { background: var(--brand-glow-soft); color: var(--brand-light); }
+.badge--muted { background: var(--bg-elevated-2); color: var(--text-muted); }
+
+.table-wrapper { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table thead { background: var(--bg-base); }
+
+.table th {
+    text-align: left;
+    padding: var(--space-3) var(--space-4);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.table td {
+    padding: var(--space-4);
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+    vertical-align: middle;
+}
+
+.table tbody tr { transition: background var(--duration-fast) var(--ease-out); }
+.table tbody tr:hover { background: var(--bg-elevated-2); }
+.table tbody tr:last-child td { border-bottom: none; }
+
+.table__user { display: flex; align-items: center; gap: var(--space-3); }
+.table__avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--brand-gradient);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 700;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.table__user-info { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.table__user-name { font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+.table__user-id { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.table__amount { font-weight: 600; font-variant-numeric: tabular-nums; }
+.table__date { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.table__actions { display: flex; gap: var(--space-1); justify-content: flex-end; }
+
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-4) var(--space-6);
+    border-top: 1px solid var(--border);
+    gap: var(--space-4);
+    flex-wrap: wrap;
+}
+
+.pagination__info { font-size: 13px; color: var(--text-muted); }
+.pagination__controls { display: flex; gap: var(--space-2); align-items: center; }
+
+.activity-list { display: flex; flex-direction: column; }
+
+.activity-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-6);
+    transition: background var(--duration-fast) var(--ease-out);
+}
+
+.activity-item:hover { background: var(--bg-elevated-2); }
+
+.activity-item__icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--brand-glow-soft);
+    color: var(--brand-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.activity-item__content { flex: 1; min-width: 0; }
+.activity-item__title { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
+.activity-item__subtitle { font-size: 12px; color: var(--text-muted); }
+.activity-item__time { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+
+/* Form labels & hints */
+.input-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--space-3);
+}
+
+.input-label > span { display: block; margin-bottom: var(--space-2); }
+.input-label code { background: var(--bg-base); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 12px; color: var(--brand-light); }
+
+.input-hint { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+
+/* Inline empty state (inside table row) */
+.table__empty { padding: 0 !important; border-bottom: none !important; }
+.empty--inline { padding: var(--space-10) var(--space-6); }
+
+/* Make .panel__filters layout robust on small screens */
+@media (max-width: 768px) {
+    .panel__filters { width: 100%; }
+    .input--search { min-width: 0; width: 100%; }
+}
+
+/* ─── Traffic cells (table column) ──────────────────── */
+.traffic-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-variant-numeric: tabular-nums;
+    min-width: 96px;
+}
+
+.traffic-cell--empty {
+    color: var(--text-dim);
+    font-weight: 500;
+}
+
+.traffic-cell__row {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.traffic-cell__arrow {
+    font-weight: 700;
+    width: 12px;
+    display: inline-block;
+    text-align: center;
+}
+
+.traffic-cell__arrow--down { color: var(--brand-light); }
+.traffic-cell__arrow--up { color: var(--info); }
+
+.traffic-cell__value {
+    letter-spacing: -0.01em;
+}
+
+/* ─── Activity cell (online indicator) ──────────────── */
+.activity-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.activity-cell__label { color: inherit; }
+
+.activity-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    position: relative;
+}
+
+.activity-dot--offline {
+    background: var(--text-dim);
+    opacity: 0.5;
+}
+
+.activity-dot--online {
+    background: var(--success);
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+    animation: pulse-online 2s ease-out infinite;
+}
+
+@keyframes pulse-online {
+    0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.6); }
+    70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .activity-dot--online { animation: none; }
+}

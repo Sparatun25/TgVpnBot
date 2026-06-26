@@ -28,7 +28,10 @@ class Settings(BaseSettings):
 
     # Amnezia VPN: работаем через docker exec в контейнер amnezia-awg2,
     # а не через отдельный HTTP API. Эти два параметра задают endpoint Amnezia.
-    amnezia_server_host: str = "104.171.128.135"  # Публичный IP сервера
+    # Значение по умолчанию — актуальный production IP сервера. Если меняется
+    # хост — обязательно обновить и тут, иначе vpn:// URL будет указывать на
+    # старый IP (см. audit #1).
+    amnezia_server_host: str = "72.56.96.52"  # Публичный IP сервера
     amnezia_container_name: str = "amnezia-awg2"  # Имя контейнера AmneziaWG
 
     # Payment (ЮKassa СБП)
@@ -48,9 +51,20 @@ class Settings(BaseSettings):
     # Сессия хранится в AdminSession и автоматически отклоняется после истечения.
     admin_session_ttl_seconds: int = 24 * 60 * 60
 
+    # Интервал фонового сбора трафика WireGuard из Amnezia-контейнера (секунды).
+    # Запускается при старте api/main.py и затем повторяется каждые N секунд.
+    # Минимум 30 сек (защита от случайного "0" → busy loop).
+    # В проде 5 минут — баланс между свежестью данных и нагрузкой на Docker.
+    traffic_collect_interval_seconds: int = 300
+    # Отключить фоновый сборщик (например, в тестах или если контейнер Amnezia
+    # ещё не развёрнут в dev-окружении). В проде оставлять True.
+    traffic_collector_enabled: bool = True
+
     # Payment stub: если True — /payment/create сразу зачисляет деньги на баланс
     # без обращения к ЮKassa. Используется пока не подключён реальный провайдер.
-    # В проде выставить в False.
+    # В проде ОБЯЗАТЕЛЬНО False (см. audit #2): иначе любой POST /api/payment/create
+    # зачислит деньги без реальной оплаты. Если в проде остался True — это критический
+    # финансовый баг, проверяйте .env: должно быть PAYMENT_STUB_MODE=False.
     payment_stub_mode: bool = True
 
     # Шифрование connection_url в БД (Fernet, симметричный AES-128 + HMAC).
@@ -79,6 +93,18 @@ class Settings(BaseSettings):
     # метрики в .db-файлы здесь, /metrics handler агрегирует через
     # MultiProcessCollector).
     prometheus_multiproc_dir: str = "/tmp/prometheus_multiproc"
+
+    # Рассылки (broadcasts) в админке.
+    # ─────────────────────────────────────────────────────────
+    # Лимит Telegram API на отправку сообщений в одном чате/группе —
+    # около 30 msg/sec на бот-токен (жёсткий лимит). Ставим 25 с запасом,
+    # чтобы при батче в 100 юзеров не упереться в flood-wait.
+    broadcast_rate_limit_per_sec: int = 25
+    # Размер одного батча для обновления счётчиков кампании в БД.
+    # Слишком маленький → много commit-ов, медленно.
+    # Слишком большой → потеряем точность счётчиков при крэше.
+    # 100 — баланс: ~4 коммита на кампанию в 400 юзеров.
+    broadcast_batch_size: int = 100
 
     @field_validator("bot_admin_ids", mode="before")
     @classmethod

@@ -13,6 +13,8 @@ interface WelcomeScreenProps {
   onStart: () => void
 }
 
+const easeOut = [0.22, 1, 0.36, 1] as const
+
 export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
   const { tg } = useTelegram()
 
@@ -26,10 +28,6 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
     onClick: handleStart,
   })
 
-  // Easing для "материальных" микро-взаимодействий (Эмиль Ковальски):
-  // небольшой overshoot без потери ощущения управляемости.
-  const easeOut = [0.22, 1, 0.36, 1] as const
-
   return (
     <motion.div
       className="onboarding-screen welcome-screen"
@@ -38,190 +36,157 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.5 }}
     >
-      {/* HERO — котик-маскот в "облаке защиты".
-          Это наш сигнатурный элемент, который делает Onyx VPN запоминающимся. */}
-      <div className="welcome-hero">
+      {/* MASCOT — сигнатурный элемент бренда в верхней части экрана.
+          Маленький (110px), с дышащим violet halo. Задаёт тон, не доминирует. */}
+      <motion.div
+        className="welcome-mascot"
+        initial={{ scale: 0.4, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.9, ease: easeOut, delay: 0.05 }}
+      >
         <motion.div
-          className="welcome-orb"
-          initial={{ scale: 0.4, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.9, ease: easeOut, delay: 0.05 }}
-        >
-          {/* Дышащий glow halo — привлекает внимание к маскоту */}
-          <motion.div
-            className="welcome-orb__halo"
-            animate={{ scale: [1, 1.18, 1], opacity: [0.55, 0.15, 0.55] }}
-            transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+          className="welcome-mascot__halo"
+          animate={{ scale: [1, 1.18, 1], opacity: [0.5, 0.12, 0.5] }}
+          transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+        />
+
+        <svg className="welcome-mascot__rings" viewBox="0 0 200 200" fill="none" aria-hidden="true">
+          <motion.circle
+            cx="100" cy="100" r="92"
+            stroke="rgba(255,255,255,0.10)"
+            strokeWidth="1"
+            strokeDasharray="2 6"
+            animate={{ rotate: 360 }}
+            transition={{ duration: 40, repeat: Infinity, ease: 'linear' }}
+            style={{ transformOrigin: '100px 100px' }}
           />
-
-          {/* Концентрические "сигналы" — намёк на защиту данных */}
-          <svg className="welcome-orb__rings" viewBox="0 0 200 200" fill="none" aria-hidden="true">
-            <motion.circle
-              cx="100" cy="100" r="92"
-              stroke="rgba(255,255,255,0.10)"
-              strokeWidth="1"
-              strokeDasharray="2 6"
-              animate={{ rotate: 360 }}
-              transition={{ duration: 40, repeat: Infinity, ease: 'linear' }}
-              style={{ transformOrigin: '100px 100px' }}
-            />
-            <motion.circle
-              cx="100" cy="100" r="74"
-              stroke="rgba(255,255,255,0.06)"
-              strokeWidth="1"
-              strokeDasharray="1 4"
-              animate={{ rotate: -360 }}
-              transition={{ duration: 28, repeat: Infinity, ease: 'linear' }}
-              style={{ transformOrigin: '100px 100px' }}
-            />
-          </svg>
-
-          {/* Сам маскот: PNG-картинка или SVG-фоллбэк — переключается через MASCOT_MODE выше */}
-          <motion.div
-            className={`welcome-orb__core${MASCOT_MODE === 'png' ? ' welcome-orb__core--image' : ''}`}
-            initial={{ scale: 0.6, rotate: -12 }}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{ duration: 0.7, ease: easeOut, delay: 0.25 }}
-          >
-            {MASCOT_MODE === 'png' ? (
-              <motion.div
-                className="welcome-orb__image-wrap"
-                animate={{ y: [0, -3, 0] }}
-                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-              >
-                <img
-                  src="/cat-mascot.png"
-                  alt="Onyx VPN кот-маскот"
-                  className="welcome-orb__image"
-                  draggable={false}
-                />
-              </motion.div>
-            ) : (
-              <motion.div
-                animate={{ y: [0, -3, 0] }}
-                transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-              >
-                <CatMascot />
-              </motion.div>
-            )}
-          </motion.div>
-        </motion.div>
+          <motion.circle
+            cx="100" cy="100" r="74"
+            stroke="rgba(255,255,255,0.06)"
+            strokeWidth="1"
+            strokeDasharray="1 4"
+            animate={{ rotate: -360 }}
+            transition={{ duration: 28, repeat: Infinity, ease: 'linear' }}
+            style={{ transformOrigin: '100px 100px' }}
+          />
+        </svg>
 
         <motion.div
-          className="welcome-eyebrow"
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.45 }}
+          className={`welcome-mascot__core${MASCOT_MODE === 'png' ? ' welcome-mascot__core--image' : ''}`}
+          initial={{ scale: 0.6, rotate: -12 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{ duration: 0.7, ease: easeOut, delay: 0.25 }}
         >
-          <span className="welcome-eyebrow__dot" />
-          Onyx VPN
+          {MASCOT_MODE === 'png' ? (
+            <motion.div
+              className="welcome-mascot__image-wrap"
+              animate={{ y: [0, -3, 0] }}
+              transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+            >
+              <img
+                src="/cat-mascot.png"
+                alt="Onyx VPN кот-маскот"
+                className="welcome-mascot__image"
+                draggable={false}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              animate={{ y: [0, -3, 0] }}
+              transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+            >
+              <CatMascot />
+            </motion.div>
+          )}
         </motion.div>
+      </motion.div>
 
-        <motion.h1
-          className="welcome-title"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: easeOut, delay: 0.55 }}
-        >
+      {/* HEADLINE — editorial typography. Eyebrow + display headline с italic акцентом.
+          Лево-выровнено (override дефолтного onboarding-screen text-align: center).
+          Это задаёт ритм всему экрану — никаких «продающих» centered заголовков. */}
+      <motion.div
+        className="welcome-headline"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: easeOut, delay: 0.5 }}
+      >
+        <div className="eyebrow eyebrow--accent">Onyx VPN</div>
+        <h1 className="display-headline display-headline--l welcome-headline__title">
           Свобода интернета<br />
-          <span className="welcome-title__accent">под защитой котика</span>
-        </motion.h1>
-
-        <motion.p
-          className="welcome-subtitle"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: easeOut, delay: 0.7 }}
-        >
+          <em className="display-headline--italic">в тишине котика</em>
+        </h1>
+        <p className="welcome-headline__subtitle">
           Премиальный VPN на&nbsp;AmneziaWG. 3&nbsp;дня бесплатно — без карты и&nbsp;смс.
-        </motion.p>
-      </div>
+        </p>
+      </motion.div>
 
-      {/* Преимущества — три карточки с собственными иконками.
-          Здесь нет эмодзи, только рукотворные SVG под эстетику бренда. */}
+      <motion.hr
+        className="hairline welcome-divider"
+        aria-hidden="true"
+        initial={{ opacity: 0, scaleX: 0 }}
+        animate={{ opacity: 1, scaleX: 1 }}
+        transition={{ duration: 0.6, delay: 0.7, ease: easeOut }}
+        style={{ transformOrigin: 'left center' }}
+      />
+
+      {/* BENEFITS — нумерованный editorial list. Не карточки — строки с цифрами.
+          Как список содержания в журнале: 01 / название / намёк справа.
+          Каждая строка отделена hairline'ом. Никаких emoji-иконок, никаких bg-карточек. */}
       <motion.ul
         className="welcome-benefits"
         initial="hidden"
         animate="visible"
         variants={{
           hidden: {},
-          visible: { transition: { staggerChildren: 0.09, delayChildren: 0.85 } },
+          visible: { transition: { staggerChildren: 0.08, delayChildren: 0.8 } },
         }}
       >
-        <BenefitCard
-          title="Скрытность"
-          hint="DPI-обход"
-          icon={<ShieldIcon />}
-          variant="primary"
-        />
-        <BenefitCard
-          title="Скорость"
-          hint="без потерь"
-          icon={<BoltIcon />}
-        />
-        <BenefitCard
-          title="Границы"
-          hint="не для нас"
-          icon={<GlobeIcon />}
-        />
+        <BenefitRow number="01" title="Скрытность" hint="DPI-обход" />
+        <BenefitRow number="02" title="Скорость" hint="без потерь" />
+        <BenefitRow number="03" title="Границы" hint="не для нас" />
       </motion.ul>
 
-      {/* Карточка триала — визуально показывает ценность и следующий шаг */}
-      <motion.div
-        className="welcome-trial-card"
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: easeOut, delay: 1.15 }}
-      >
-        {/* "Shimmer" пробегает по карточке, чтобы привлечь взгляд */}
-        <motion.div
-          className="welcome-trial-card__shimmer"
-          animate={{ x: ['-100%', '220%'] }}
-          transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut', repeatDelay: 1.2 }}
-        />
+      <motion.hr
+        className="hairline welcome-divider"
+        aria-hidden="true"
+        initial={{ opacity: 0, scaleX: 0 }}
+        animate={{ opacity: 1, scaleX: 1 }}
+        transition={{ duration: 0.6, delay: 1.05, ease: easeOut }}
+        style={{ transformOrigin: 'left center' }}
+      />
 
-        <div className="welcome-trial-card__head">
-          <div className="welcome-trial-card__badge">
-            <SparkleIcon />
-            <span>3 дня</span>
+      {/* TRIAL — editorial row вместо карточки. Тонкая типографика: слева serif "Триал",
+          справа ценa (старая зачёркнута, новая violet). Никакого shimmer, никакого gradient bg.
+          Meta-строка снизу подсказывает, что входит. */}
+      <motion.div
+        className="welcome-trial"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: easeOut, delay: 1.15 }}
+      >
+        <div className="welcome-trial__top">
+          <div className="welcome-trial__name">
+            Триал на&nbsp;<em>3&nbsp;дня</em>
           </div>
-          <div className="welcome-trial-card__price">
-            <span className="welcome-trial-card__price-old">299 ₽</span>
-            <span className="welcome-trial-card__price-new">0 ₽</span>
+          <div className="welcome-trial__price">
+            <span className="welcome-trial__price-old">299 ₽</span>
+            <span className="welcome-trial__price-new">0&nbsp;₽</span>
           </div>
         </div>
-
-        <ul className="welcome-trial-card__list">
-          <TrialFeature delay={1.25}>Без привязки карты</TrialFeature>
-          <TrialFeature delay={1.32}>Без скрытых платежей</TrialFeature>
-          <TrialFeature delay={1.39}>Активация за 1 минуту</TrialFeature>
-        </ul>
-
-        <div className="welcome-trial-card__progress" aria-hidden="true">
-          <motion.div
-            className="welcome-trial-card__progress-bar"
-            initial={{ width: '0%' }}
-            animate={{ width: '100%' }}
-            transition={{ duration: 2.4, ease: easeOut, delay: 1.5 }}
-          />
+        <div className="welcome-trial__meta">
+          Без карты · Без скрытых платежей · Активация за минуту
         </div>
       </motion.div>
 
-      {/* Тонкий hint к MainButton внизу — анимированная стрелка-намёк,
-          что следующий шаг ждёт внизу. */}
+      {/* Тонкий hint к MainButton — без анимированной стрелки, просто текст-намёк.
+          Главная кнопка внизу сама привлекает внимание через haptic feedback при появлении. */}
       <motion.div
         className="welcome-hint"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: [0, 0.7, 0.7], y: [8, 0, 0] }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: [0, 0.5, 0.5] }}
         transition={{ duration: 2.4, delay: 2.0, times: [0, 0.4, 1] }}
       >
-        <span>Нажмите кнопку ниже</span>
-        <motion.div
-          animate={{ y: [0, 4, 0] }}
-          transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-        >
-          <ChevronDownIcon />
-        </motion.div>
+        Нажмите кнопку ниже
       </motion.div>
     </motion.div>
   )
@@ -229,46 +194,26 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
 
 /* ─── Подкомпоненты (компактно, чтобы не плодить файлы) ─── */
 
-function BenefitCard({
+function BenefitRow({
+  number,
   title,
   hint,
-  icon,
-  variant,
 }: {
+  number: string
   title: string
   hint: string
-  icon: React.ReactNode
-  variant?: 'primary'
 }) {
   return (
     <motion.li
-      className={`benefit-card${variant === 'primary' ? ' benefit-card--primary' : ''}`}
+      className="welcome-benefit"
       variants={{
-        hidden: { opacity: 0, y: 14 },
-        visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } },
+        hidden: { opacity: 0, x: -8 },
+        visible: { opacity: 1, x: 0, transition: { duration: 0.4, ease: easeOut } },
       }}
-      whileHover={{ y: -2 }}
-      whileTap={{ scale: 0.98 }}
     >
-      <div className="benefit-card__icon">{icon}</div>
-      <div className="benefit-card__text">
-        <div className="benefit-card__title">{title}</div>
-        <div className="benefit-card__hint">{hint}</div>
-      </div>
-    </motion.li>
-  )
-}
-
-function TrialFeature({ children, delay }: { children: React.ReactNode; delay: number }) {
-  return (
-    <motion.li
-      className="welcome-trial-card__feature"
-      initial={{ opacity: 0, x: -8 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.4, delay }}
-    >
-      <CheckIcon />
-      <span>{children}</span>
+      <span className="welcome-benefit__number">{number}</span>
+      <span className="welcome-benefit__title">{title}</span>
+      <span className="welcome-benefit__hint">{hint}</span>
     </motion.li>
   )
 }
@@ -418,56 +363,6 @@ function CatMascot() {
       >
         VPN
       </text>
-    </svg>
-  )
-}
-
-function ShieldIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 2 L20 5 V11 C20 16 16 20.5 12 22 C8 20.5 4 16 4 11 V5 Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-      <path d="M9 12 L11 14 L15 10" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function BoltIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M13 2 L4 14 H11 L9 22 L20 9 H13 Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function GlobeIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M3 12 H21 M12 3 C15 7 15 17 12 21 C9 17 9 7 12 3" stroke="currentColor" strokeWidth="1.4" />
-    </svg>
-  )
-}
-
-function CheckIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M5 12.5 L10 17.5 L19 7.5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function SparkleIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-      <path d="M12 0 L14 10 L24 12 L14 14 L12 24 L10 14 L0 12 L10 10 Z" />
-    </svg>
-  )
-}
-
-function ChevronDownIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M6 9 L12 15 L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

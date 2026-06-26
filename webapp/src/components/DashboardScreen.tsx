@@ -115,112 +115,144 @@ export function DashboardScreen({ trialExpiresAt, traffic, onBuySubscription }: 
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
     >
-      <motion.div
-        className="status-card"
-        initial={{ opacity: 0, y: 20 }}
+      {/* HERO — editorial status. Eyebrow top-left, big serif headline,
+          italic countdown в правом нижнем углу. Асимметрия задаёт rhythm. */}
+      <motion.section
+        className="dashboard-hero"
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.1 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
       >
-        <div className="status-header">
-          <div className="status-indicator">
-            <div
+        <div className="dashboard-hero__top">
+          <div className="eyebrow eyebrow--accent">
+            <span
               className={`status-dot ${isOnline ? 'active' : 'expired'}`}
               aria-hidden="true"
             />
-            <span className="status-text">{isOnline ? 'Защищён' : 'Не подключён'}</span>
+            {isOnline ? 'Защищён' : 'Не подключён'}
           </div>
-          <div className="status-countdown">
-            Осталось {timeLeft.days} дн {timeLeft.hours} ч
-          </div>
+          {trialExpiresAt && (
+            <div className="dashboard-hero__countdown">
+              Осталось <span className="numeric">{timeLeft.days}</span> дн <span className="numeric">{timeLeft.hours}</span> ч
+            </div>
+          )}
         </div>
+
+        <h1 className="display-headline display-headline--xxl dashboard-hero__title">
+          {isOnline ? (
+            <>Трафик <em className="display-headline--italic">под охраной</em></>
+          ) : (
+            <>Нет <em className="display-headline--italic">соединения</em></>
+          )}
+        </h1>
 
         <div className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">
           {countdownAnnouncement}
         </div>
 
-        <div
-          className="progress-container"
-          role="progressbar"
-          aria-valuenow={Math.round(progress)}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label={`Остаток триала: ${timeLeft.days} дн ${timeLeft.hours} ч`}
-        >
-          <motion.div
-            className="progress-bar"
-            initial={{ width: 0 }}
-            animate={{ width: `${progress}%` }}
-            transition={{ duration: 1, delay: 0.3, ease: [0.32, 0.72, 0, 1] }}
-            aria-hidden="true"
-          />
-        </div>
+        {trialExpiresAt && (
+          <div
+            className="dashboard-hero__progress"
+            role="progressbar"
+            aria-valuenow={Math.round(progress)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`Остаток триала: ${timeLeft.days} дн ${timeLeft.hours} ч`}
+          >
+            <motion.div
+              className="dashboard-hero__progress-fill"
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: progress / 100 }}
+              transition={{ duration: 1, delay: 0.4, ease: [0.32, 0.72, 0, 1] }}
+              aria-hidden="true"
+            />
+          </div>
+        )}
+      </motion.section>
 
-        <motion.button
-          className="buy-subscription-button"
-          onClick={handleBuyClick}
-          whileTap={{ scale: 0.96 }}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.4 }}
-        >
-          Купить подписку
-        </motion.button>
-      </motion.div>
+      <hr className="hairline" aria-hidden="true" />
 
-      <motion.div
-        className="usage-card"
-        initial={{ opacity: 0, y: 20 }}
+      {/* TRAFFIC — большая цифра как editorial hero. Eyebrow слева,
+          гигантская цифра по центру, детали справа. */}
+      <motion.section
+        className="dashboard-traffic"
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.2 }}
+        transition={{ duration: 0.5, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
       >
-        <div className="card-title">Использовано трафика</div>
-        <div className="usage-value">
+        <div className="eyebrow">Трафик</div>
+        <div className="dashboard-traffic__hero">
           <motion.span
-            className="usage-number"
+            className="display-headline display-headline--xxl numeric"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.5 }}
+            transition={{ duration: 0.7, delay: 0.3 }}
           >
             {receivedFmt.value}
           </motion.span>
-          <span className="usage-unit">{receivedFmt.unit}</span>
+          <span className="dashboard-traffic__unit">{receivedFmt.unit}</span>
         </div>
-        <div className="usage-today">
-          Отправлено: {sentFmt.value} {sentFmt.unit}
+        <div className="dashboard-traffic__detail">
+          <span className="stat-label">Отправлено</span>
+          <span className="stat-value stat-value--small numeric">
+            {sentFmt.value} {sentFmt.unit}
+          </span>
         </div>
-      </motion.div>
+      </motion.section>
 
-      <motion.div
-        className="security-card"
-        initial={{ opacity: 0, y: 20 }}
+      <hr className="hairline" aria-hidden="true" />
+
+      {/* SECURITY — компактные paired details. Каждая пара: label + status.
+          Без cards — просто ритм label/value через hairlines. */}
+      <motion.section
+        className="dashboard-security"
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.3 }}
+        transition={{ duration: 0.5, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}
       >
-        <div className="card-title">Безопасность</div>
-        <div className="security-items">
-          <div className="security-item">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isOnline ? '#10B981' : '#6B7280'} strokeWidth="2" aria-hidden="true">
-              <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span>{isOnline ? 'IP защищён' : 'IP не защищён'}</span>
+        <div className="eyebrow">Безопасность</div>
+        <div className="dashboard-security__grid">
+          <div className="dashboard-security__row">
+            <span className="stat-label">IP-адрес</span>
+            <span className={`security-status ${isOnline ? 'security-status--ok' : 'security-status--off'}`}>
+              {isOnline ? 'защищён' : 'открыт'}
+            </span>
           </div>
-          <div className="security-item">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isOnline ? '#10B981' : '#6B7280'} strokeWidth="2" aria-hidden="true">
-              <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span>{isOnline ? 'DNS защищён' : 'DNS не защищён'}</span>
+          <hr className="hairline" aria-hidden="true" />
+          <div className="dashboard-security__row">
+            <span className="stat-label">DNS</span>
+            <span className={`security-status ${isOnline ? 'security-status--ok' : 'security-status--off'}`}>
+              {isOnline ? 'защищён' : 'открыт'}
+            </span>
           </div>
-          <div className="security-item">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span>Соединение зашифровано</span>
+          <hr className="hairline" aria-hidden="true" />
+          <div className="dashboard-security__row">
+            <span className="stat-label">Шифрование</span>
+            <span className="security-status security-status--ok">активно</span>
+          </div>
+          <hr className="hairline" aria-hidden="true" />
+          <div className="dashboard-security__row">
+            <span className="stat-label">Последняя активность</span>
+            <span className="security-status">{lastSeenText}</span>
           </div>
         </div>
-        <div className="security-last-seen">
-          Последняя активность: {lastSeenText}
-        </div>
-      </motion.div>
+      </motion.section>
+
+      {/* CTA — subtle text-link style вместо big button.
+          Editorial luxury: подсказка, не продажа. */}
+      <motion.button
+        className="dashboard-cta"
+        onClick={handleBuyClick}
+        whileTap={{ scale: 0.985 }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.4, delay: 0.5 }}
+      >
+        <span>Продлить подписку</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+          <path d="M5 12H19M12 5L19 12L12 19" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </motion.button>
     </motion.div>
   )
 }

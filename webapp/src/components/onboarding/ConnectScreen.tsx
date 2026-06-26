@@ -11,6 +11,8 @@ interface ConnectScreenProps {
 const LAUNCH_DEEP_LINK_DELAY_MS = 1000
 const LAUNCH_FAILED_CHECK_MS = 2000
 
+const easeOut = [0.22, 1, 0.36, 1] as const
+
 export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) {
   const { tg } = useTelegram()
   const [showFallback, setShowFallback] = useState(false)
@@ -148,39 +150,43 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
   return (
     <motion.div
       className="onboarding-screen connect-screen"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.4 }}
     >
-      <motion.h2
-        className="connect-title"
+      {/* HEADLINE — editorial typography */}
+      <motion.div
+        className="connect-headline"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.1 }}
+        transition={{ duration: 0.5, ease: easeOut, delay: 0.05 }}
       >
-        Подключите Onyx VPN
-      </motion.h2>
+        <div className="eyebrow">Шаг 3 из 3</div>
+        <h2 className="display-headline display-headline--m connect-headline__title">
+          Подключите<br />
+          <em className="display-headline--italic">Onyx VPN</em>
+        </h2>
+      </motion.div>
 
+      {/* STEPS — editorial rows (01 / 02 / 03) вместо кружков с цифрами.
+          Тот же ритм, что и в welcome-benefits: цифра + название + подсказка справа.
+          Hairline между строками — единый визуальный язык с welcome/install. */}
       <motion.ol
         className="connect-steps"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.2 }}
+        initial="hidden"
+        animate="visible"
+        variants={{
+          hidden: {},
+          visible: { transition: { staggerChildren: 0.08, delayChildren: 0.2 } },
+        }}
       >
-        <li className="connect-step">
-          <div className="step-number">1</div>
-          <div className="step-text">Нажмите кнопку ниже</div>
-        </li>
-        <li className="connect-step">
-          <div className="step-number">2</div>
-          <div className="step-text">Ключ автоматически скопируется</div>
-        </li>
-        <li className="connect-step">
-          <div className="step-number">3</div>
-          <div className="step-text">Amnezia VPN откроется автоматически</div>
-        </li>
+        <StepRow number="01" title="Нажмите кнопку ниже" hint="→" />
+        <StepRow number="02" title="Ключ скопируется автоматически" hint="" />
+        <StepRow number="03" title="Amnezia VPN откроется сам" hint="" />
       </motion.ol>
+
+      <hr className="hairline connect-divider" aria-hidden="true" />
 
       {/* Launching-индикатор: показываем пока идёт попытка deep-link и юзер ещё
           не нажал «Продолжить». Без этого блока между кликом и срабатыванием
@@ -204,7 +210,7 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2"
+              strokeWidth="1.6"
               aria-hidden="true"
             >
               <rect x="9" y="9" width="13" height="13" rx="2" />
@@ -233,7 +239,7 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
             aria-label="Ключ подключения VPN"
           />
           <button className="fallback-copy-button" onClick={handleManualCopy}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
               <rect x="9" y="9" width="13" height="13" rx="2" />
               <path d="M5 15H4C2.9 15 2 14.1 2 13V4C2 2.9 2.9 2 3 2H13C14.1 2 15 2.9 15 4V5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -249,10 +255,10 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
+            transition={{ duration: 0.4, ease: easeOut }}
           >
             <div className="launch-failed-icon">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M12 8V12M12 16H12.01" strokeLinecap="round" />
               </svg>
@@ -265,14 +271,14 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
               <motion.button
                 className="launch-failed-primary"
                 onClick={handleRetryLaunch}
-                whileTap={{ scale: 0.96 }}
+                whileTap={{ scale: 0.985 }}
               >
                 Открыть Amnezia ещё раз
               </motion.button>
               <motion.button
                 className="launch-failed-secondary"
                 onClick={handleDismissLaunchFailed}
-                whileTap={{ scale: 0.96 }}
+                whileTap={{ scale: 0.985 }}
               >
                 Понятно
               </motion.button>
@@ -289,7 +295,7 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
       >
         <summary className="help-toggle">
           <span>Не получилось автоматически?</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
             <path d="M6 9L12 15L18 9" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </summary>
@@ -306,5 +312,23 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
         </div>
       </motion.details>
     </motion.div>
+  )
+}
+
+/* ─── Подкомпоненты (компактно) ─── */
+
+function StepRow({ number, title, hint }: { number: string; title: string; hint: string }) {
+  return (
+    <motion.li
+      className="connect-step"
+      variants={{
+        hidden: { opacity: 0, x: -6 },
+        visible: { opacity: 1, x: 0, transition: { duration: 0.4, ease: easeOut } },
+      }}
+    >
+      <span className="connect-step__number">{number}</span>
+      <span className="connect-step__title">{title}</span>
+      {hint && <span className="connect-step__hint">{hint}</span>}
+    </motion.li>
   )
 }

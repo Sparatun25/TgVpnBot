@@ -133,7 +133,7 @@ export function TariffsScreen({
       // а не generic-сообщение — иначе юзер не понимает, retry'ить или чинить сеть.
       setPurchaseError(apiError ?? 'Не удалось купить подписку. Попробуйте ещё раз.')
     }
-  }, [balance, purchaseSubscription, tg, onPurchaseComplete])
+  }, [balance, purchaseSubscription, tg, onPurchaseComplete, apiError])
 
   // Auto-buy from deep link (after tariffs + profile are loaded).
   useEffect(() => {
@@ -181,104 +181,49 @@ export function TariffsScreen({
       transition={{ duration: 0.4 }}
     >
       <motion.div
-        className="value-proposition"
-        initial={{ opacity: 0, y: 20 }}
+        className="tariffs-header"
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.1 }}
+        transition={{ duration: 0.4, delay: 0.05 }}
       >
-        <h2 className="screen-title">Почему пользователи выбирают Onyx VPN</h2>
-        <ul className="value-points">
-          <li className="value-point">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span>Безлимитный трафик</span>
-          </li>
-          <li className="value-point">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span>Высокая скорость</span>
-          </li>
-          <li className="value-point">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span>Поддержка нескольких устройств</span>
-          </li>
-          <li className="value-point">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span>Быстрое подключение</span>
-          </li>
-        </ul>
+        <div className="eyebrow">Подписка</div>
+        <h2 className="tariffs-title">Выберите план</h2>
+        <p className="tariffs-subtitle">
+          Безлимитный трафик, AmneziaWG и&nbsp;защита от&nbsp;DPI на&nbsp;всех устройствах.
+        </p>
       </motion.div>
 
-      <div className="tariffs-grid">
-        {tariffsLoading && (
-          <div className="tariffs-loading" role="status" aria-live="polite">
-            <div className="loading-spinner" aria-hidden="true" />
-            <div className="loading-text">Загрузка тарифов...</div>
-          </div>
-        )}
-        {!tariffsLoading && tariffs.length === 0 && (
-          <div className="tariffs-empty">
-            <div className="tariffs-empty-text">Не удалось загрузить тарифы</div>
-            <button className="tariffs-retry" onClick={loadTariffs}>
-              Повторить
-            </button>
-          </div>
-        )}
+      {tariffsLoading && (
+        <div className="tariffs-status" role="status" aria-live="polite">
+          <div className="tariffs-status__spinner" aria-hidden="true" />
+          <div className="tariffs-status__text">Загружаем тарифы…</div>
+        </div>
+      )}
 
-        {purchaseError && (
-          <motion.div
-            className="tariffs-purchase-error"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            role="alert"
-          >
-            <span>{purchaseError}</span>
-            <button
-              className="tariffs-purchase-error-dismiss"
-              onClick={() => setPurchaseError(null)}
-              aria-label="Закрыть ошибку"
-            >
-              ×
-            </button>
-          </motion.div>
-        )}
-        {tariffs.map((tariff, index) => (
-          <motion.div
-            key={tariff.id}
-            className={`tariff-card ${tariff.popular ? 'tariff-card-popular' : ''} ${tariff.compact ? 'tariff-card-compact' : ''}`}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.2 + index * 0.1 }}
-          >
-            {tariff.badge && <div className="tariff-badge">{tariff.badge}</div>}
+      {!tariffsLoading && tariffs.length === 0 && (
+        <div className="tariffs-status" role="alert">
+          <div className="tariffs-status__text">Не удалось загрузить тарифы</div>
+          <button className="tariffs-status__retry" onClick={loadTariffs}>
+            Повторить
+          </button>
+        </div>
+      )}
 
-            <div className="tariff-header">
-              <h3 className="tariff-name">{tariff.name}</h3>
-              <div className="tariff-period">{tariff.period}</div>
-            </div>
-
-            <div className="tariff-pricing">
-              <div className="tariff-price">
-                <span className="tariff-price-value">{tariff.price}</span>
-                <span className="tariff-price-currency">₽</span>
-              </div>
-              {tariff.monthlyPrice && (
-                <div className="tariff-monthly">{tariff.monthlyPrice} ₽ / месяц</div>
-              )}
-              {tariff.savings && tariff.savings > 0 && (
-                <div className="tariff-savings">Экономия {tariff.savings} ₽</div>
-              )}
-            </div>
-
+      {!tariffsLoading && tariffs.length > 0 && (
+        <motion.div
+          className="tariffs-list"
+          initial="hidden"
+          animate="visible"
+          variants={{
+            hidden: {},
+            visible: { transition: { staggerChildren: 0.08, delayChildren: 0.15 } },
+          }}
+        >
+          {tariffs.map((tariff) => (
             <motion.button
-              className="tariff-button"
+              key={tariff.id}
+              type="button"
+              className={`tariff-row ${tariff.popular ? 'tariff-row--featured' : ''}`}
               onClick={() => handleBuy(tariff)}
               disabled={purchasing === tariff.id}
               aria-label={
@@ -286,13 +231,56 @@ export function TariffsScreen({
                   ? `Подключение тарифа ${tariff.name}`
                   : `Подключить тариф ${tariff.name} за ${tariff.price} ₽`
               }
-              whileTap={{ scale: 0.96 }}
+              variants={{
+                hidden: { opacity: 0, y: 8 },
+                visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
+              }}
             >
-              {purchasing === tariff.id ? 'Подключение...' : 'Подключить'}
+              <div className="tariff-row__left">
+                <div className="tariff-row__name-row">
+                  <span className="tariff-row__name">{tariff.name}</span>
+                  {tariff.badge && <span className="tariff-row__badge">{tariff.badge}</span>}
+                </div>
+                <div className="tariff-row__meta">
+                  {tariff.period}
+                  {tariff.monthlyPrice && (
+                    <> · <span className="tariff-row__meta--accent">{tariff.monthlyPrice} ₽/мес</span></>
+                  )}
+                  {tariff.savings && tariff.savings > 0 && (
+                    <> · Экономия {tariff.savings} ₽</>
+                  )}
+                </div>
+              </div>
+              <div className="tariff-row__right">
+                <div className="tariff-row__price">
+                  <span className="tariff-row__price-value">{tariff.price}</span>
+                  <span className="tariff-row__price-currency">₽</span>
+                </div>
+                <span className="tariff-row__period">{tariff.period}</span>
+              </div>
             </motion.button>
-          </motion.div>
-        ))}
-      </div>
+          ))}
+        </motion.div>
+      )}
+
+      {purchaseError && (
+        <motion.div
+          className="tariffs-purchase-error"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          role="alert"
+        >
+          <span>{purchaseError}</span>
+          <button
+            className="tariffs-purchase-error-dismiss"
+            onClick={() => setPurchaseError(null)}
+            aria-label="Закрыть ошибку"
+          >
+            ×
+          </button>
+        </motion.div>
+      )}
 
       <TopUpBottomSheet
         isOpen={showTopUp}

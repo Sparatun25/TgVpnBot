@@ -5,6 +5,8 @@ interface SuccessScreenProps {
   onComplete: () => void
 }
 
+const easeOut = [0.22, 1, 0.36, 1] as const
+
 export function SuccessScreen({ onComplete }: SuccessScreenProps) {
   const { tg } = useTelegram()
 
@@ -47,23 +49,27 @@ export function SuccessScreen({ onComplete }: SuccessScreenProps) {
         </motion.div>
       </motion.div>
 
-      <motion.h2
-        className="success-title"
+      {/* HEADLINE — editorial: eyebrow + display headline с italic акцентом.
+          Финальный экран онбординга — закрывает всю воронку единым ритмом.
+          Trial-активирован в подзаголовке — это уже свершившийся факт, не вопрос. */}
+      <motion.div
+        className="success-headline"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.4 }}
+        transition={{ duration: 0.5, ease: easeOut, delay: 0.4 }}
       >
-        VPN успешно подключен
-      </motion.h2>
-
-      <motion.p
-        className="success-subtitle"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.5 }}
-      >
-        Пробный период уже активирован
-      </motion.p>
+        <div className="eyebrow eyebrow--accent">
+          <span className="status-dot active" aria-hidden="true" />
+          Подключение установлено
+        </div>
+        <h2 className="display-headline display-headline--m success-headline__title">
+          VPN работает.<br />
+          <em className="display-headline--italic">Добро пожаловать.</em>
+        </h2>
+        <p className="success-headline__subtitle">
+          Пробный период активирован. Откройте приложение, чтобы увидеть статус и&nbsp;трафик.
+        </p>
+      </motion.div>
 
       <motion.button
         className="success-cta"
@@ -71,7 +77,7 @@ export function SuccessScreen({ onComplete }: SuccessScreenProps) {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.6 }}
-        whileTap={{ scale: 0.96 }}
+        whileTap={{ scale: 0.985 }}
       >
         Перейти в приложение
       </motion.button>

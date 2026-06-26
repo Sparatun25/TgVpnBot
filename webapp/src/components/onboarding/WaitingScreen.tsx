@@ -11,6 +11,9 @@ interface WaitingScreenProps {
 // если бэкенд по какой-то причине не подтвердил активацию (например, ключ
 // уже создан, но первый пакет через VPN ещё не прошёл).
 const OVERALL_TIMEOUT_SECONDS = 300
+const HELP_THRESHOLD_SECONDS = 45
+
+const easeOut = [0.22, 1, 0.36, 1] as const
 
 export function WaitingScreen({ onActivated }: WaitingScreenProps) {
   const { tg } = useTelegram()
@@ -27,7 +30,7 @@ export function WaitingScreen({ onActivated }: WaitingScreenProps) {
   }, [])
 
   useEffect(() => {
-    if (elapsed >= 45 && !showHelp) {
+    if (elapsed >= HELP_THRESHOLD_SECONDS && !showHelp) {
       setShowHelp(true)
       tg?.HapticFeedback?.notificationOccurred('warning')
     }
@@ -56,9 +59,9 @@ export function WaitingScreen({ onActivated }: WaitingScreenProps) {
         clearTimeout(timeoutId)
         if (response.ok) {
           const data = await response.json()
-          if (data.active && data.auto_advance_eligible) {
-            onActivated()
-          }
+            if (data.active && data.auto_advance_eligible) {
+              onActivated()
+            }
         }
       } catch {
         clearTimeout(timeoutId)
@@ -87,7 +90,7 @@ export function WaitingScreen({ onActivated }: WaitingScreenProps) {
     }
   }
 
-  const progress = Math.min((elapsed / 45) * 100, 100)
+  const progress = Math.min((elapsed / HELP_THRESHOLD_SECONDS) * 100, 100)
 
   return (
     <motion.div
@@ -154,32 +157,26 @@ export function WaitingScreen({ onActivated }: WaitingScreenProps) {
             </defs>
           </svg>
         </div>
-        <div className="waiting-pulse">
-          <motion.div
-            className="pulse-ring"
-            animate={{ scale: [1, 1.5], opacity: [0.5, 0] }}
-            transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
-          />
-        </div>
       </motion.div>
 
-      <motion.h2
-        className="waiting-title"
+      {/* HEADLINE — editorial: eyebrow + display headline с italic акцентом.
+          Тот же ритм, что welcome/install/connect/preparing — единый язык.
+          Subtitle — короткая поясняющая строка слева, без max-width. */}
+      <motion.div
+        className="waiting-headline"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.2 }}
+        transition={{ duration: 0.5, ease: easeOut, delay: 0.2 }}
       >
-        Проверяем подключение
-      </motion.h2>
-
-      <motion.p
-        className="waiting-subtitle"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.3 }}
-      >
-        Настройка завершится автоматически после первого подключения
-      </motion.p>
+        <div className="eyebrow">Ждём активацию</div>
+        <h2 className="display-headline display-headline--m waiting-headline__title">
+          Проверяем<br />
+          <em className="display-headline--italic">подключение</em>
+        </h2>
+        <p className="waiting-headline__subtitle">
+          Настройка завершится автоматически после первого&nbsp;подключения.
+        </p>
+      </motion.div>
 
       <motion.div
         className="waiting-progress"
@@ -193,7 +190,7 @@ export function WaitingScreen({ onActivated }: WaitingScreenProps) {
           aria-valuenow={Math.round(progress)}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-label={`Проверка подключения: ${elapsed} из 45 секунд`}
+          aria-label={`Проверка подключения: ${elapsed} из ${HELP_THRESHOLD_SECONDS} секунд`}
         >
           <motion.div
             className="progress-fill"
@@ -203,8 +200,12 @@ export function WaitingScreen({ onActivated }: WaitingScreenProps) {
             aria-hidden="true"
           />
         </div>
-        <div className="progress-text">{elapsed} сек</div>
+        <div className="progress-text">
+          <span className="numeric">{elapsed}</span> <span className="progress-text__unit">сек</span>
+        </div>
       </motion.div>
+
+      <hr className="hairline waiting-divider" aria-hidden="true" />
 
       {showHelp && (
         <motion.button
@@ -213,9 +214,12 @@ export function WaitingScreen({ onActivated }: WaitingScreenProps) {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          whileTap={{ scale: 0.96 }}
+          whileTap={{ scale: 0.985 }}
         >
-          Помощь при подключении
+          <span>Помощь при подключении</span>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+            <path d="M7 17 L17 7 M9 7 H17 V15" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </motion.button>
       )}
 
@@ -226,7 +230,7 @@ export function WaitingScreen({ onActivated }: WaitingScreenProps) {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          whileTap={{ scale: 0.96 }}
+          whileTap={{ scale: 0.985 }}
         >
           Продолжить вручную
         </motion.button>

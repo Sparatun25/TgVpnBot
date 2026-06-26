@@ -18,6 +18,8 @@ const loadingMessages = [
   'Почти готово...',
 ]
 
+const easeOut = [0.22, 1, 0.36, 1] as const
+
 export function PreparingScreen({
   isLoading,
   error,
@@ -99,6 +101,8 @@ export function PreparingScreen({
         </svg>
       </button>
 
+      {/* ANIMATION — спиннер для loading, галочка для success.
+          В error-состоянии спиннер скрывается — остаётся только текст и CTA retry. */}
       <motion.div
         className="preparing-animation"
         initial={{ scale: 0 }}
@@ -107,7 +111,7 @@ export function PreparingScreen({
       >
         {isSuccess ? (
           <motion.div
-            className="success-icon"
+            className="preparing-icon preparing-icon--success"
             initial={{ scale: 0, rotate: -180 }}
             animate={{ scale: 1, rotate: 0 }}
             transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1] }}
@@ -126,11 +130,11 @@ export function PreparingScreen({
               />
             </svg>
           </motion.div>
-        ) : (
+        ) : !error ? (
           <motion.div
-            className="loading-spinner"
+            className="preparing-icon preparing-icon--loading"
             animate={{ rotate: 360 }}
-            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+            transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
           >
             <svg width="80" height="80" viewBox="0 0 80 80" fill="none" aria-hidden="true">
               <circle cx="40" cy="40" r="38" stroke="rgba(255,255,255,0.1)" strokeWidth="2" fill="none" />
@@ -138,32 +142,46 @@ export function PreparingScreen({
                 cx="40"
                 cy="40"
                 r="38"
-                stroke="url(#spinner-gradient)"
+                stroke="url(#preparing-spinner-grad)"
                 strokeWidth="2"
                 fill="none"
                 strokeLinecap="round"
                 strokeDasharray="60 180"
               />
               <defs>
-                <linearGradient id="spinner-gradient" x1="0" y1="0" x2="80" y2="80">
-                  <stop stopColor="#FFFFFF" />
-                  <stop offset="1" stopColor="#A0A0A0" />
+                <linearGradient id="preparing-spinner-grad" x1="0" y1="0" x2="80" y2="80">
+                  <stop stopColor="#A78BFA" />
+                  <stop offset="1" stopColor="#7C3AED" />
                 </linearGradient>
               </defs>
             </svg>
           </motion.div>
-        )}
+        ) : null}
       </motion.div>
 
-      <motion.h2
-        className="preparing-title"
+      {/* HEADLINE — editorial: eyebrow + display headline с italic акцентом.
+          Тот же ритм, что welcome/install/connect — единый визуальный язык.
+          В error-состоянии headline остаётся таким же, меняется только eyebrow. */}
+      <motion.div
+        className="preparing-headline"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.2 }}
+        transition={{ duration: 0.5, ease: easeOut, delay: 0.2 }}
         role={error ? 'alert' : undefined}
       >
-        {error ? 'Не удалось активировать триал' : isSuccess ? 'VPN-доступ готов' : 'Подготавливаем ваш VPN-доступ'}
-      </motion.h2>
+        <div className="eyebrow">
+          {error ? 'Ошибка активации' : isSuccess ? 'Готово' : 'Создаём ключ'}
+        </div>
+        <h2 className="display-headline display-headline--m preparing-headline__title">
+          {error ? (
+            <>Что-то пошло<br /><em className="display-headline--italic">не так</em></>
+          ) : isSuccess ? (
+            <>VPN-доступ<br /><em className="display-headline--italic">открыт</em></>
+          ) : (
+            <>Подготавливаем<br /><em className="display-headline--italic">ваш доступ</em></>
+          )}
+        </h2>
+      </motion.div>
 
       <motion.p
         className="preparing-subtitle"
@@ -173,7 +191,7 @@ export function PreparingScreen({
         exit={{ opacity: 0, y: -5 }}
         transition={{ duration: 0.3 }}
       >
-        {error ? error : isSuccess ? 'Ваш персональный ключ создан' : loadingMessages[messageIndex]}
+        {error ? error : isSuccess ? 'Ваш персональный ключ создан и готов к импорту.' : loadingMessages[messageIndex]}
       </motion.p>
 
       {error && (
@@ -183,7 +201,7 @@ export function PreparingScreen({
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.3 }}
-          whileTap={{ scale: 0.96 }}
+          whileTap={{ scale: 0.985 }}
         >
           Попробовать снова
         </motion.button>
@@ -196,7 +214,7 @@ export function PreparingScreen({
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.3 }}
-          whileTap={{ scale: 0.96 }}
+          whileTap={{ scale: 0.985 }}
         >
           Продолжить
         </motion.button>

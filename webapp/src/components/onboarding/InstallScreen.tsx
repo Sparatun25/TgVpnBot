@@ -67,7 +67,7 @@ export function InstallScreen({ onInstalled }: InstallScreenProps) {
           <span className="install-logo__pulse-ring" />
           <span className="install-logo__pulse-ring install-logo__pulse-ring--delay" />
         </div>
-        <svg width="100" height="100" viewBox="0 0 100 100" fill="none" aria-hidden="true">
+        <svg width="92" height="92" viewBox="0 0 100 100" fill="none" aria-hidden="true">
           <defs>
             <linearGradient id="amnezia-grad" x1="30" y1="25" x2="70" y2="65">
               <stop stopColor="#FFFFFF" />
@@ -75,7 +75,7 @@ export function InstallScreen({ onInstalled }: InstallScreenProps) {
             </linearGradient>
           </defs>
           <circle cx="50" cy="50" r="46" fill="#121214" stroke="rgba(255,255,255,0.08)" strokeWidth="1.5" />
-          {/* Stylized "A" for Amnezia — higher contrast than previous gradient */}
+          {/* Stylized "A" for Amnezia */}
           <path
             d="M50 22L28 70H40L43 62H57L60 70H72L50 22Z"
             fill="url(#amnezia-grad)"
@@ -88,46 +88,50 @@ export function InstallScreen({ onInstalled }: InstallScreenProps) {
         </svg>
       </motion.div>
 
-      <motion.h2
-        className="install-title"
+      {/* HEADLINE — editorial typography вместо «продающего» centered заголовка */}
+      <motion.div
+        className="install-headline"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: easeOut, delay: 0.2 }}
       >
-        Установите Amnezia VPN
-      </motion.h2>
+        <div className="eyebrow">Шаг 2 из 3</div>
+        <h2 className="display-headline display-headline--m install-headline__title">
+          Установите<br />
+          <em className="display-headline--italic">Amnezia VPN</em>
+        </h2>
+        <p className="install-headline__subtitle">
+          Откройте магазин, установите приложение и&nbsp;вернитесь сюда.
+        </p>
+      </motion.div>
 
-      <motion.p
-        className="install-description"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: easeOut, delay: 0.3 }}
-      >
-        Откройте магазин, установите приложение и&nbsp;вернитесь сюда.
-      </motion.p>
-
-      <motion.div
-        className="platform-cards"
+      {/* PLATFORMS — editorial rows вместо platform-cards.
+          Каждая строка: цифра + название + subtitle + arrow.
+          Минимум визуального шума — просто список с разделителями. */}
+      <motion.ul
+        className="install-platforms"
         initial="hidden"
         animate="visible"
         variants={{
           hidden: {},
-          visible: { transition: { staggerChildren: 0.12, delayChildren: 0.4 } },
+          visible: { transition: { staggerChildren: 0.1, delayChildren: 0.4 } },
         }}
       >
-        <PlatformCard
-          label="Для iPhone и iPad"
-          name="App Store"
-          onClick={() => openExternal(appStoreUrl)}
+        <PlatformRow
+          number="01"
+          title="App Store"
+          subtitle="Для iPhone и iPad"
           icon={<AppleIcon />}
+          onClick={() => openExternal(appStoreUrl)}
         />
-        <PlatformCard
-          label="Для Android"
-          name="Google Play"
-          onClick={() => openExternal(playStoreUrl)}
+        <PlatformRow
+          number="02"
+          title="Google Play"
+          subtitle="Для Android"
           icon={<PlayIcon />}
+          onClick={() => openExternal(playStoreUrl)}
         />
-      </motion.div>
+      </motion.ul>
 
       <motion.div
         className="install-hint"
@@ -147,40 +151,47 @@ export function InstallScreen({ onInstalled }: InstallScreenProps) {
 
 /* ─── Подкомпоненты ─── */
 
-function PlatformCard({
-  label,
-  name,
+function PlatformRow({
+  number,
+  title,
+  subtitle,
   icon,
   onClick,
 }: {
-  label: string
-  name: string
+  number: string
+  title: string
+  subtitle: string
   icon: React.ReactNode
   onClick: () => void
 }) {
   return (
-    <motion.button
-      type="button"
-      className="platform-card platform-card-button"
-      onClick={onClick}
+    <motion.li
+      className="install-platform-row"
       variants={{
-        hidden: { opacity: 0, y: 12 },
-        visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: easeOut } },
+        hidden: { opacity: 0, y: 8 },
+        visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: easeOut } },
       }}
-      whileHover={{ y: -2 }}
-      whileTap={{ scale: 0.98 }}
     >
-      <div className="platform-card__icon">{icon}</div>
-      <div className="platform-info">
-        <div className="platform-label">{label}</div>
-        <div className="platform-name">{name}</div>
-      </div>
-      <div className="platform-card__arrow">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M7 17 L17 7 M9 7 H17 V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </div>
-    </motion.button>
+      <motion.button
+        type="button"
+        className="install-platform-button"
+        onClick={onClick}
+        whileTap={{ scale: 0.985 }}
+        aria-label={`${title} — ${subtitle}`}
+      >
+        <span className="install-platform-row__number">{number}</span>
+        <span className="install-platform-row__icon">{icon}</span>
+        <span className="install-platform-row__text">
+          <span className="install-platform-row__title">{title}</span>
+          <span className="install-platform-row__subtitle">{subtitle}</span>
+        </span>
+        <span className="install-platform-row__arrow" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M7 17 L17 7 M9 7 H17 V15" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+      </motion.button>
+    </motion.li>
   )
 }
 

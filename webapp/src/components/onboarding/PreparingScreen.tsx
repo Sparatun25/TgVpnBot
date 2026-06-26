@@ -74,6 +74,15 @@ export function PreparingScreen({
     onBack()
   }
 
+  // Сбрасываем messageIndex перед новой попыткой — иначе юзер после ошибки
+  // видит «Почти готово...» с первой секунды retry, а не «Создаём VPN-доступ...».
+  // Цикл сообщений (ниже) инкрементирует от текущего значения, и без сброса
+  // пользователь теряет ощущение «новой попытки».
+  const handleRetry = () => {
+    setMessageIndex(0)
+    onRetry?.()
+  }
+
   const isSuccess = hasStarted && !isLoading && !error
 
   return (
@@ -170,7 +179,7 @@ export function PreparingScreen({
       {error && (
         <motion.button
           className="preparing-cta"
-          onClick={() => onRetry?.()}
+          onClick={handleRetry}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.3 }}

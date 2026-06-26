@@ -102,6 +102,18 @@ export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) 
     }
   }, [paymentStatus, getInitData, tg, onBalanceUpdate])
 
+  // Открытие внешней ссылки через Telegram in-app browser если доступен,
+  // иначе через window.open. window.open напрямую открывает СБП-страницу
+  // ЮKassa ВНЕ Telegram-контекста — это разрывает flow и пользователь теряет
+  // состояние приложения. tg.openLink возвращает его обратно после оплаты.
+  const openExternal = (url: string) => {
+    if (tg?.openLink) {
+      tg.openLink(url)
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
+  }
+
   const handleQuickAmount = (value: number) => {
     tg?.HapticFeedback?.impactOccurred('light')
     setAmount(value.toString())
@@ -124,7 +136,7 @@ export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) 
 
     if (paymentData && paymentData.payment_url) {
       setPaymentStatus('pending')
-      window.open(paymentData.payment_url, '_blank')
+      openExternal(paymentData.payment_url)
     } else {
       setIsProcessing(false)
       tg?.HapticFeedback?.notificationOccurred('error')

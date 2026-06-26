@@ -100,6 +100,12 @@ body::before {
 .app-content {
   flex: 1;
   padding: 24px 20px;
+  /* bottom-nav (position: fixed) занимает ~84px. Без padding-bottom
+     последняя карточка на дашборде/профиле уходит под нав и не доскролливается.
+     .app-onboarding .app-content ниже сбрасывает в 0, когда нав скрыт.
+     env(safe-area-inset-bottom) добавляет высоту home-indicator на iPhone
+     с чёлкой, чтобы контент не уходил под системный жест. */
+  padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
   max-width: 600px;
   margin: 0 auto;
   width: 100%;
@@ -196,11 +202,14 @@ body::before {
 }
 
 /* Onboarding Screens.
-   Telegram MainButton занимает ~56px внизу viewport,
-   поэтому padding-bottom 88px оставляет зазор для контента.
-   `safe center` гарантирует, что короткий контент центрируется
-   по вертикали, а длинный — прижимается к верху и скроллится,
-   а не уезжает за экран. */
+   Telegram MainButton занимает ~56px внизу viewport, плюс safe-area
+   на iPhone с чёлкой (~34px). padding-bottom 88px — fallback для старых
+   версий Telegram, где contentSafeAreaInset.bottom недоступен (App.tsx
+   выставляет --tg-content-bottom-inset через viewportChanged event).
+   +24px даёт визуальный зазор между контентом и кнопкой.
+   `safe center` гарантирует, что короткий контент центрируется по
+   вертикали, а длинный — прижимается к верху и скроллится, а не
+   уезжает за экран. */
 .onboarding-screen {
   display: flex;
   flex-direction: column;
@@ -208,7 +217,7 @@ body::before {
   justify-content: center;
   justify-content: safe center;
   min-height: calc(100vh - 48px);
-  padding: 40px 0 88px;
+  padding: 40px 0 max(88px, calc(var(--tg-content-bottom-inset, 0px) + 24px));
   text-align: center;
   will-change: transform, opacity;
 }
@@ -1222,6 +1231,35 @@ details[open] .help-toggle svg {
   font-weight: 600;
 }
 
+/* Connecting state: показывается после клика по MainButton, пока юзер
+   не нажмёт «Продолжить» (или пока не сработает launchFailed через 2с).
+   Подтверждает что ключ скопирован и Amnezia пытается открыться —
+   без этого юзер не понимал, что произошло после клика. */
+.connect-launching {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--onyx-border);
+  border-radius: 12px;
+  max-width: 320px;
+  width: 100%;
+}
+
+.connect-launching svg {
+  flex-shrink: 0;
+  color: var(--onyx-success);
+}
+
+.connect-launching-text {
+  font-size: 14px;
+  color: var(--onyx-text-secondary);
+  line-height: 1.4;
+  text-align: left;
+}
+
 /* Launch Failed Card */
 .launch-failed-card {
   width: 100%;
@@ -1693,8 +1731,15 @@ details[open] .help-toggle svg {
 }
 
 .insight-icon {
-  font-size: 20px;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(124, 58, 237, 0.08);
+  color: var(--onyx-accent);
 }
 
 .insight-text {
@@ -1713,7 +1758,10 @@ details[open] .help-toggle svg {
   border-top: 1px solid var(--onyx-border);
   display: flex;
   justify-content: space-around;
-  padding: 12px 0;
+  /* env(safe-area-inset-bottom) добавляет safe area снизу для iPhone с чёлкой
+     (home indicator). Без этого иконки навигации перекрываются системным
+     жестом «свайп вверх = домой» и тапы случайно срабатывают на индикатор. */
+  padding: 12px 0 calc(12px + env(safe-area-inset-bottom, 0px));
   z-index: 100;
 }
 

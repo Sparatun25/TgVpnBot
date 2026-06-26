@@ -15,6 +15,13 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
   const { tg } = useTelegram()
   const [showFallback, setShowFallback] = useState(false)
   const [showLaunchFailed, setShowLaunchFailed] = useState(false)
+  // true после первого клика по MainButton — блокирует auto onConnect() и
+  // переключает текст MainButton на «Продолжить». До этой правки onConnect()
+  // звался прямо в handleConnect, и юзер успевал уйти на WaitingScreen до
+  // срабатывания deep link / launchFailed check — карточка с «не открылось»
+  // была dead code, а WaitingScreen крутил polling без понимания, что
+  // Amnezia на самом деле не запустился.
+  const [hasAttemptedLaunch, setHasAttemptedLaunch] = useState(false)
 
   const deepLinkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const launchCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -48,9 +55,19 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
     } catch {
       setShowFallback(true)
       tg?.HapticFeedback?.notificationOccurred('warning')
+      // НЕ ставим hasAttemptedLaunch — без скопированного ключа deep link бесполезен.
+      // Юзер увидит fallback с textarea и кнопкой ручного копирования.
+      return
     }
 
-    // Пытаемся открыть Amnezia VPN через deep link
+    setHasAttemptedLaunch(true)
+
+    // Пытаемся открыть Amnezia VPN через deep link.
+    // ВАЖНО: onConnect() здесь НЕ зовём. Раньше он вызывался сразу и уводил юзера
+    // на WaitingScreen до того, как deep link успевал сработать (1с) или пока
+    // launchCheckTimer (ещё 2с) решал, открылось ли приложение. Сейчас ждём
+    // явного «Продолжить» через MainButton — это снимает гонку и активирует
+    // launchFailed-карточку (раньше она была dead code).
     deepLinkTimerRef.current = setTimeout(() => {
       deepLinkTimerRef.current = null
       if (!isMountedRef.current) return
@@ -72,7 +89,12 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
         setShowFallback(true)
       }
     }, LAUNCH_DEEP_LINK_DELAY_MS)
+  }
 
+  const handleProceed = () => {
+    // Юзер явно подтвердил, что открыл Amnezia (или принял ситуацию после
+    // launchFailed) — теперь ведём на WaitingScreen для server-side polling.
+    tg?.HapticFeedback?.impactOccurred('light')
     onConnect()
   }
 
@@ -113,8 +135,14 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
   }
 
   useMainButton({
-    text: 'Подключить Onyx VPN',
-    onClick: handleConnect,
+    // После первой попытки запуска MainButton становится «Продолжить» —
+    // единственный способ пройти дальше на WaitingScreen. До правки onConnect()
+    // вызывался сразу в handleConnect, и кнопка была de-facto одноразовой.
+    text: hasAttemptedLaunch ? 'Продолжить' : 'Подключить Onyx VPN',
+    onClick: hasAttemptedLaunch ? handleProceed : handleConnect,
+    // Показываем spinner внутри MainButton, пока идёт deep-link попытка и
+    // юзер ещё не нажал «Продолжить» (или пока не сработал launchFailed).
+    loading: hasAttemptedLaunch && !showLaunchFailed,
   })
 
   return (
@@ -153,6 +181,41 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
           <div className="step-text">Amnezia VPN откроется автоматически</div>
         </li>
       </motion.ol>
+
+      {/* Launching-индикатор: показываем пока идёт попытка deep-link и юзер ещё
+          не нажал «Продолжить». Без этого блока между кликом и срабатыванием
+          launchFailed (через 3с) экран выглядит «мёртвым» — нет ни спиннера,
+          ни feedback. role=status + aria-live=polite озвучивают изменение
+          скринридером. */}
+      <AnimatePresence>
+        {hasAttemptedLaunch && !showLaunchFailed && !showFallback && (
+          <motion.div
+            className="connect-launching"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            role="status"
+            aria-live="polite"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <rect x="9" y="9" width="13" height="13" rx="2" />
+              <path d="M5 15H4C2.89543 15 2 14.1046 2 13V4C2 2.89543 2.89543 2 4 2H13C14.1046 2 15 2.89543 15 4V5" strokeLinecap="round" />
+            </svg>
+            <div className="connect-launching-text">
+              Ключ скопирован. Открываем Amnezia VPN...
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {showFallback && (
         <motion.div

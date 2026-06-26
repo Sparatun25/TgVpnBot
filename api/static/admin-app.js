@@ -37,7 +37,16 @@ function el(tag, props = {}, ...children) {
         if (k === 'class') node.className = v;
         else if (k === 'html') node.innerHTML = v;
         else if (k === 'text') node.textContent = v;
-        else if (k.startsWith('on')) node.addEventListener(k.slice(2).toLowerCase(), v);
+        else if (k.startsWith('on')) {
+            // addEventListener требует функцию. Строковый on* (например,
+            // inline onerror для <img>) — это атрибут, не listener, иначе
+            // TypeError роняет весь render и экран остаётся пустым.
+            if (typeof v === 'function') {
+                node.addEventListener(k.slice(2).toLowerCase(), v);
+            } else {
+                node.setAttribute(k, v);
+            }
+        }
         else if (k === 'dataset') Object.assign(node.dataset, v);
         else node.setAttribute(k, v);
     }

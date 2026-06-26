@@ -184,6 +184,17 @@ export function TopUpBottomSheet({
     }
   }, [paymentStatus, getInitData, tg, onPaymentSuccess, onClose])
 
+  // tg.openLink открывает СБП-форму ЮKassa в Telegram in-app browser и
+  // возвращает юзера обратно в Mini App после оплаты. window.open напрямую
+  // вырывает из Telegram-контекста — flow рвётся, polling теряет сессию.
+  const openExternal = (url: string) => {
+    if (tg?.openLink) {
+      tg.openLink(url)
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
+  }
+
   const handleTopUp = async () => {
     tg?.HapticFeedback?.impactOccurred('light')
     setIsProcessing(true)
@@ -197,7 +208,7 @@ export function TopUpBottomSheet({
     if (paymentData && paymentData.payment_url) {
       setPaymentStatus('pending')
       setIsProcessing(false)
-      window.open(paymentData.payment_url, '_blank')
+      openExternal(paymentData.payment_url)
     } else {
       setIsProcessing(false)
       tg?.HapticFeedback?.notificationOccurred('error')

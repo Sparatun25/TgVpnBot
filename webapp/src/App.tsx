@@ -106,6 +106,43 @@ export default function App() {
     }
   }, [tg])
 
+  // Telegram viewport tracking: MainButton/KeyboardTopPanel перекрывают WebView
+  // снизу. TG 7.7+ отдаёт точный contentSafeAreaInset.bottom; на старых версиях
+  // фоллбэк через разницу viewportStableHeight и viewportHeight. CSS-переменная
+  // --tg-content-bottom-inset используется в .onboarding-screen, чтобы последняя
+  // строка текста не уезжала за MainButton. Без этого юзер на iOS/Android с
+  // активной клавиатурой видит обрезанный CTA и не понимает, что кнопка есть.
+  useEffect(() => {
+    if (!tg) return
+
+    const applyViewport = () => {
+      let bottomInset = 0
+
+      if (tg.contentSafeAreaInset?.bottom != null) {
+        bottomInset = tg.contentSafeAreaInset.bottom
+      } else {
+        const stable = tg.viewportStableHeight ?? 0
+        const current = tg.viewportHeight ?? stable
+        bottomInset = Math.max(0, stable - current)
+      }
+
+      document.documentElement.style.setProperty(
+        '--tg-content-bottom-inset',
+        `${bottomInset}px`,
+      )
+    }
+
+    applyViewport()
+    tg.onEvent?.('viewportChanged', applyViewport)
+
+    return () => {
+      tg.offEvent?.('viewportChanged', applyViewport)
+      // При уходе с экрана (теоретически тут unmount всего App, но на всякий
+      // случай): сбрасываем переменную, чтобы CSS упал на 88px fallback.
+      document.documentElement.style.setProperty('--tg-content-bottom-inset', '0px')
+    }
+  }, [tg])
+
   // Telegram BackButton: показываем на всех шагах onboarding кроме welcome
   // (там нет предыдущего шага — goBack был бы no-op).
   useBackButton(goBack, step !== 'welcome' && step !== 'dashboard')

@@ -39,6 +39,19 @@ export function ProfileScreen({
     }
   }, [])
 
+  // Поддержка открывается через Telegram in-app browser (tg.openLink), а не
+  // через target="_blank" — последний вырывает юзера из Telegram и оставляет
+  // вкладку браузера, из которой он потом не может вернуться в приложение.
+  // href сохранён как fallback: если tg нет (Mini App открыт напрямую в браузере
+  // для отладки), обычный переход по ссылке работает.
+  const openExternal = (url: string) => {
+    if (tg?.openLink) {
+      tg.openLink(url)
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer')
+    }
+  }
+
   const referralGoal = 3
   const referralProgress = Math.min(referralCount / referralGoal, 1)
 
@@ -180,8 +193,7 @@ export function ProfileScreen({
           onClick={handleCopyReferral}
           disabled={!referralLink}
           whileTap={{ scale: 0.96 }}
-          role="status"
-          aria-live="polite"
+          aria-label={copied ? 'Скопировано' : 'Скопировать реферальную ссылку'}
         >
           {copied ? (
             <>
@@ -201,6 +213,15 @@ export function ProfileScreen({
           )}
         </motion.button>
 
+        {/* Отдельная live-область для анонса результата копирования.
+            Сам <button> не должен быть live-region (role=status на интерактивном
+            элементе — анти-паттерн: скринридер проглатывает событие нажатия).
+            Здесь aria-live="polite" гарантирует, что диктор проговорит текст
+            при изменении copied, не перебивая другие анонсы. */}
+        <div className="visually-hidden" role="status" aria-live="polite">
+          {copied ? 'Реферальная ссылка скопирована в буфер обмена' : ''}
+        </div>
+
         {referralCode && (
           <div className="referral-code-display">
             Код: <span className="code-value">{referralCode}</span>
@@ -214,7 +235,14 @@ export function ProfileScreen({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.4 }}
       >
-        <a href="https://t.me/OnyxVpnSupport" className="profile-link" target="_blank" rel="noopener noreferrer">
+        <a
+          href="https://t.me/OnyxVpnSupport"
+          className="profile-link"
+          onClick={(e) => {
+            e.preventDefault()
+            openExternal('https://t.me/OnyxVpnSupport')
+          }}
+        >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <path d="M21 11.5A8.38 8.38 0 0 1 12.5 20A8.5 8.5 0 0 1 3 11.5A8.38 8.38 0 0 1 11.5 3A8.5 8.5 0 0 1 21 11.5Z" />
             <path d="M8 12L11 15L16 9" />

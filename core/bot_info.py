@@ -13,13 +13,20 @@ getMe дешёвый, и при смене username задержка в 6ч пр
 """
 
 import asyncio
+import logging
 import time
 
 from aiogram import Bot
 
 from core.config import settings
 
+logger = logging.getLogger(__name__)
+
 _CACHE_TTL_SECONDS = 6 * 60 * 60
+# Таймаут на getMe: Telegram API в норме отвечает за <1с. 5с — щедрый запас,
+# но жёсткий предел, чтобы зависший сокет не блокировал /api/profile.
+# Паттерн взят из bot/handlers/start.py:321.
+_GETME_TIMEOUT_SECONDS = 5.0
 
 _cached_username: str | None = None
 _cached_at: float = 0.0
@@ -47,11 +54,31 @@ async def get_bot_username() -> str | None:
 
         bot = Bot(token=settings.bot_token.get_secret_value())
         try:
-            bot_info = await bot.get_me()
+            # asyncio.wait_for ОБЯЗАТЕЛЕН: без него зависший сокет к api.telegram.org
+            # блокирует /api/profile до таймаута aiohttp (по дефолту 300с) — всё это
+            # время Mini App показывает бесконечный лоадер. Штатный ответ getMe <1с,
+            # 5с — щедрый запас. Таймаут бросает asyncio.TimeoutError, которое мы
+            # ловим общим except Exception ниже — без finally сессия не закрылась бы.
+            try:
+                bot_info = await asyncio.wait_for(
+                    bot.get_me(), timeout=_GETME_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Telegram getMe timeout (%sс) — вернуть stale-кэш",
+                    _GETME_TIMEOUT_SECONDS,
+                )
+                return _cached_username
+
             _cached_username = bot_info.username
             _cached_at = time.monotonic()
+            logger.info("bot_username обновлён: @%s", _cached_username)
             return _cached_username
-        except Exception:
+        except Exception as e:
+            # Сюда попадаем при сетевых ошибках, невалидном токене, проблемах
+            # с JSON-ответом. Stale-кэш — лучше None: фронт просто отключит
+            # кнопку копирования реферальной ссылки.
+            logger.warning("Не удалось обновить bot_username: %s", e)
             return _cached_username
         finally:
             await bot.session.close()

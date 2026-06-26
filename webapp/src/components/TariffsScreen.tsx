@@ -150,9 +150,19 @@ export function TariffsScreen({
     }
 
     const tariff = tariffs.find(t => t.id === autoPlanId)
-    handledAutoPlanRef.current = autoPlanId
     if (tariff) {
+      // Помечаем ТОЛЬКО когда реально стартуем покупку. Если бы пометили
+      // ДО if (тариф не найден), handledAutoPlanRef.current === autoPlanId
+      // и при следующем ре-рендере useEffect вышел бы через ранний return —
+      // юзер остался бы с молча «съеденным» deep-link без фидбэка.
+      // Сейчас поведение симметрично ветке tariffs.length === 0 (тоже не помечаем).
+      handledAutoPlanRef.current = autoPlanId
       handleBuy(tariff)
+    } else {
+      // Тариф из ссылки не найден в загруженном списке — устаревшая ссылка или
+      // план снят с продажи. Показываем явную ошибку, чтобы юзер не гадал,
+      // почему «ничего не произошло».
+      setPurchaseError('Тариф из ссылки больше не доступен. Выберите тариф вручную.')
     }
     onAutoPlanConsumed?.()
   }, [autoPlanId, balance, tariffsLoading, tariffs, handleBuy, onAutoPlanConsumed])

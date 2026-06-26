@@ -1,6 +1,7 @@
 """Точка запуска FastAPI приложения."""
 
 import asyncio
+import hmac
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -71,7 +72,23 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle события приложения."""
-    logger.info("app_starting")
+    logger.info("app_starting", environment=settings.environment)
+
+    # Production safety net: refuse to start without DB_ENCRYPTION_KEY.
+    # Если ключ не задан — connection_url (vpn:// с приватными ключами
+    # AmneziaWG) хранится plaintext в БД. Утечка БД = утечка ВСЕХ
+    # VPN-ключей пользователей. Падаем сразу, до init_db, чтобы оператор
+    # получил явную ошибку в логах при деплое.
+    if settings.environment == "production" and settings.db_encryption_key is None:
+        raise RuntimeError(
+            "DB_ENCRYPTION_KEY не задан в production — connection_url "
+            "будет храниться plaintext, утечка БД = утечка VPN-ключей. "
+            "Сгенерируйте ключ: "
+            'python -c "from cryptography.fernet import Fernet; '
+            'print(Fernet.generate_key().decode())" '
+            "и задайте DB_ENCRYPTION_KEY в .env"
+        )
+
     try:
         await init_db()
     except Exception as exc:
@@ -234,16 +251,39 @@ async def readiness_check():
 
 
 @app.get("/metrics", include_in_schema=False)
-def metrics():
+def metrics(request: Request):
     """Prometheus exposition endpoint.
 
     В multiprocess-режиме (uvicorn --workers 4 + PROMETHEUS_MULTIPROC_DIR):
     собираем метрики со всех worker'ов через MultiProcessCollector.
     Иначе отдаём дефолтный REGISTRY.
 
-    Endpoint НЕ аутентифицирован — доступ должен быть закрыт на уровне
-    сети (internal Docker network / nginx IP-allowlist).
+    Авторизация:
+    - Если PROMETHEUS_METRICS_TOKEN задан — требуем Authorization: Bearer.
+      Используем hmac.compare_digest для защиты от timing-атак.
+    - Если не задан — endpoint открыт (как раньше). В production ЗАДАВАЙТЕ
+      токен И закрывайте на уровне сети (nginx IP-allowlist).
     """
+    metrics_token = settings.prometheus_metrics_token
+    if metrics_token is not None:
+        auth_header = request.headers.get("authorization", "")
+        # Ожидаем формат "Bearer <token>". Парсим без regex для скорости.
+        if not auth_header.startswith("Bearer "):
+            return Response(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        presented_token = auth_header[len("Bearer "):]
+        # hmac.compare_digest — constant-time, не утекает длина токена через тайминг.
+        if not hmac.compare_digest(
+            presented_token,
+            metrics_token.get_secret_value(),
+        ):
+            return Response(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
     if "PROMETHEUS_MULTIPROC_DIR" in os.environ:
         registry = CollectorRegistry()
         multiprocess.MultiProcessCollector(registry)

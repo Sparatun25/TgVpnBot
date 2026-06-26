@@ -14,6 +14,8 @@ export interface ProfileData {
     connection_url: string | null
   }
   has_used_trial: boolean
+  bot_username: string | null
+  referral_link: string | null
 }
 
 interface TrialResponse {

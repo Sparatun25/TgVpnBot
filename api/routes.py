@@ -15,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from api.auth import get_current_user_tg_id
+from bot.utils.referral import build_referral_link
+from core.bot_info import get_bot_username
 from core.config import settings
 from core.crypto import decrypt_connection_url, encrypt_connection_url
 from core.db import get_session
@@ -131,6 +133,15 @@ TARIFFS = {
     "quarter": {"price_kopecks": 65000, "days": 90, "name": "3 месяца"},
     "year": {"price_kopecks": 115000, "days": 365, "name": "Год"},
 }
+
+# Инвариант: все значения TariffId Literal должны быть ключами TARIFFS.
+# Если кто-то добавит тариф в TariffId, но забудет в TARIFFS — упадём при импорте
+# с понятной ошибкой, а не при первом POST /subscription/purchase с KeyError.
+_missing_in_tariffs = set(TariffId.__args__) - set(TARIFFS.keys())
+assert not _missing_in_tariffs, (
+    f"TariffId Literal содержит {_missing_in_tariffs}, но их нет в TARIFFS. "
+    "Добавьте запись в TARIFFS или уберите из TariffId."
+)
 
 # Эмпирический таймаут: время от создания ключа до первого пакета на сервере.
 # Используется как эвристика для авто-перехода WaitingScreen → SuccessScreen,
@@ -260,6 +271,12 @@ async def get_profile(
     referral_count_q = select(func.count(User.id)).where(User.referred_by_id == tg_id)
     referral_count = (await session.execute(referral_count_q)).scalar_one()
 
+    # Username бота нужен для построения реферальной ссылки в Mini App.
+    # Кэш на 6ч в core/bot_info — getMe дороже любого локального запроса,
+    # а username меняется только через @BotFather. None если Telegram API
+    # недоступен И кэш ещё пуст — тогда referral_link=null, фронт скроет кнопку.
+    bot_username = await get_bot_username()
+
     return {
         "balance": user.balance,
         "referral_code": user.referral_code,
@@ -271,6 +288,8 @@ async def get_profile(
             "connection_url": decrypt_connection_url(active_sub.connection_url) if active_sub and active_sub.connection_url else None,
         },
         "has_used_trial": has_used_trial,
+        "bot_username": bot_username,
+        "referral_link": build_referral_link(bot_username, tg_id) if bot_username else None,
     }
 
 
@@ -441,16 +460,8 @@ async def purchase_subscription(
     5. Списывает деньги с баланса
     """
     # Pydantic PurchaseRequest уже гарантирует, что tariff_id ∈ {"monthly", "quarter", "year"}.
+    # Инвариант TariffId ⊆ TARIFFS.keys() проверяется на module load (см. выше).
     tariff_id = payload.tariff_id
-
-    if tariff_id not in TARIFFS:
-        # Страховка от рассогласования модели и TARIFFS — на случай если
-        # кто-то добавит тариф в модель, но забудет в словарь.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Некорректный тариф",
-        )
-
     tariff = TARIFFS[tariff_id]
     price = tariff["price_kopecks"]
     days = tariff["days"]

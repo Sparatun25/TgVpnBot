@@ -1,0 +1,9 @@
+# ─────────────────────────────────────────────────────────
+# Dev / Test зависимости. НЕ нужны в прод-образе.
+# Установка:
+#   pip install -r requirements.txt -r requirements-dev.txt
+# В проде Dockerfile.backend ставит ТОЛЬКО requirements.txt.
+# ─────────────────────────────────────────────────────────
+
+pytest==8.3.3
+pytest-asyncio==0.24.0

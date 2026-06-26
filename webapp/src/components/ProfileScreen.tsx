@@ -8,6 +8,13 @@ interface ProfileScreenProps {
   subscriptionExpiresAt: string | null
   referralCode?: string
   referralCount?: number
+  /**
+   * Готовая реферальная ссылка от бэкенда (https://t.me/<bot>?start=ref_<id>).
+   * null если бэкенд не смог получить username бота — кнопка копирования
+   * остаётся disabled. Это убирает хардкод username из клиента: источник
+   * правды для deep-link-формата теперь только в bot/utils/referral.py.
+   */
+  referralLink?: string | null
 }
 
 const COPIED_INDICATOR_MS = 2000
@@ -17,6 +24,7 @@ export function ProfileScreen({
   subscriptionExpiresAt,
   referralCode,
   referralCount = 0,
+  referralLink,
 }: ProfileScreenProps) {
   const { tg } = useTelegram()
   const [copied, setCopied] = useState(false)
@@ -31,13 +39,11 @@ export function ProfileScreen({
     }
   }, [])
 
-  const referralLink = user?.id
-    ? `https://t.me/Onyx_vpn24_bot?start=ref_${user.id}`
-    : ''
   const referralGoal = 3
   const referralProgress = Math.min(referralCount / referralGoal, 1)
 
   const handleCopyReferral = async () => {
+    if (!referralLink) return
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         await navigator.clipboard.writeText(referralLink)

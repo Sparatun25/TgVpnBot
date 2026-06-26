@@ -9,10 +9,11 @@ import shlex
 import time
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
+from core.db import async_session_factory
 from core.metrics import (
     docker_exec_duration_seconds,
     docker_exec_errors_total,
@@ -26,10 +27,23 @@ logger = logging.getLogger(__name__)
 # Таймаут для Docker-команд (секунды)
 DOCKER_TIMEOUT = 30
 
-# Асинхронный лок для сериализации создания ключей.
-# Без него два параллельных запроса могут прочитать один и тот же
-# список used_ips и выдать обоим клиентам одинаковый IP → конфликт в awg0.conf.
+# Асинхронный лок для сериализации создания ключей ВНУТРИ одного процесса.
+# Без него два параллельных запроса в одном воркере могут прочитать один и тот
+# же used_ips и выдать обоим клиентам одинаковый IP → конфликт в awg0.conf.
+#
+# НО: api/main.py запускается через `uvicorn --workers 4` (см. docker-entrypoint.sh)
+# + отдельный bot-процесс. asyncio.Lock — process-local, он НЕ сериализует
+# запросы между разными воркерами. Для межпроцессной синхронизации используется
+# AMNEZIA_LOCK_KEY + pg_advisory_xact_lock (см. _amnezia_lock_session).
 _ip_lock = asyncio.Lock()
+
+# Ключ для Postgres advisory lock. Константа выбрана произвольно, но уникальна
+# для нашего приложения. pg_advisory_xact_lock сериализует все операции
+# create_client_key/revoke_client_key между всеми процессами (4 воркера + бот).
+# Без него два воркера, обрабатывающие /subscription/trial параллельно, оба
+# прошли бы asyncio.Lock (разные инстансы), прочитали одинаковый used_ips,
+# выдали одинаковый свободный IP → дубликаты AllowedIPs в awg0.conf.
+AMNEZIA_LOCK_KEY = 0x414D4E5A  # "AMNZ" в ASCII (просто memorable константа)
 
 # Whitelist путей, которые разрешено читать/писать внутри контейнера.
 # Двойная защита от shell-инъекции: даже если в будущем кто-то начнёт
@@ -473,12 +487,27 @@ async def create_client_key(
     Raises:
         RuntimeError: Если не удалось создать ключ.
     """
-    # Сериализуем весь процесс выдачи ключа через модульный asyncio.Lock.
-    # Без лока два параллельных запроса могут:
-    #   1) прочитать один и тот же used_ips из awg0.conf
-    #   2) выбрать одинаковый свободный IP
-    #   3) оба записать [Peer] с одинаковым AllowedIPs → конфликт конфига.
-    # Также awg-quick down/up нельзя вызывать параллельно.
+    # Сериализуем через межпроцессный advisory lock + внутрипроцессный asyncio.Lock.
+    # asyncio.Lock защищает только в пределах одного воркера. Postgres advisory
+    # lock защищает от race между 4 uvicorn воркерами + bot-процессом
+    # (docker-entrypoint.sh).
+    async with async_session_factory() as lock_session:
+        async with lock_session.begin():
+            await lock_session.execute(
+                text("SELECT pg_advisory_xact_lock(:k)"),
+                {"k": AMNEZIA_LOCK_KEY},
+            )
+            return await _create_client_key_locked(user_id, is_trial, plan_type)
+
+
+async def _create_client_key_locked(
+    user_id: int,
+    is_trial: bool,
+    plan_type: str | None = None,
+) -> tuple[str, str]:
+    """Тело create_client_key. Вызывающий ОБЯЗАН держать AMNEZIA_LOCK_KEY."""
+    # Внутрипроцессный asyncio.Lock — оптимизация, чтобы не открывать лишнюю
+    # DB-сессию для advisory lock на back-to-back вызовы в одном воркере.
     async with _ip_lock:
         try:
             # 1. Генерируем ключи клиента
@@ -580,6 +609,11 @@ async def revoke_client_key(
     без изменений. Это упрощает повторные вызовы после сбоя (например, если
     прошлый revoke откатился на полпути).
 
+    Конкурентная безопасность: пишет в те же файлы, что и create_client_key,
+    поэтому обёрнут в pg_advisory_xact_lock (тот же ключ AMNEZIA_LOCK_KEY).
+    Это сериализует операции между всеми процессами (4 uvicorn воркера +
+    bot-процесс), а не только внутри одного asyncio.Lock.
+
     Args:
         sub_uuid: Public key клиента (хранится в Subscription.uuid).
         source: Источник вызова для метрики. "api" (по умолчанию) для ручных
@@ -599,12 +633,29 @@ async def revoke_client_key(
     if not sub_uuid or not isinstance(sub_uuid, str):
         raise ValueError("sub_uuid должен быть непустой строкой")
 
-    # Тот же lock, что и в create_client_key — revoke и create пишут в одни и те же
-    # файлы (awg0.conf + clientsTable). Без общей сериализации параллельный revoke
-    # (scheduler + компенсирующий из routes.py) может прочитать один и тот же
-    # конфиг, удалить РАЗНЫЕ peer-блоки и записать их независимо → один из
-    # peer-ов будет удалён только в БД, но останется в Amnezia (orphan).
-    # Found by code-reviewer (CRITICAL #1).
+    # Cross-process advisory lock. Открываем отдельную DB-сессию — у caller's
+    # session может быть открытая транзакция (например, в компенсирующем revoke
+    # из api/routes.py), которая нам здесь не нужна.
+    async with async_session_factory() as lock_session:
+        async with lock_session.begin():
+            await lock_session.execute(
+                text("SELECT pg_advisory_xact_lock(:k)"),
+                {"k": AMNEZIA_LOCK_KEY},
+            )
+            return await _revoke_client_key_locked(sub_uuid, source, reason)
+
+
+async def _revoke_client_key_locked(
+    sub_uuid: str,
+    source: str,
+    reason: str,
+) -> bool:
+    """Тело revoke_client_key под pg_advisory_xact_lock (см. revoke_client_key).
+
+    Вызывающий код ДОЛЖЕН уже удерживать AMNEZIA_LOCK_KEY — иначе сериализация
+    между процессами теряется и параллельный revoke может оставить orphan peer
+    в Amnezia (см. multi-worker race audit).
+    """
     async with _ip_lock:
         try:
             # 1. Читаем оба файла, чтобы понять, существует ли ключ вообще.
@@ -721,31 +772,78 @@ async def check_expired_subscriptions(session: AsyncSession) -> list[Subscriptio
     failed_revoke_subs: list[tuple[int, str, int]] = []
 
     for sub in expired:
-        success = await revoke_client_key(
-            sub.uuid,
-            source="scheduler",
-            reason="expired",
-        )
+        try:
+            async with session.begin_nested():
+                # TOCTOU protection: перечитываем подписку под FOR UPDATE перед revoke.
+                # Без этого гонка:
+                #   T0 scheduler: SELECT истёкших подписок (sub.id=42, expires_at=прошло)
+                #   T1 user:      POST /api/subscription/purchase → обновляет expires_at
+                #                 и is_active=True (renewal того же sub.id)
+                #   T2 scheduler: revoke_client_key(sub.uuid) — ОТЗЫВАЕТ СВЕЖЕ ОПЛАЧЕННЫЙ КЛЮЧ!
+                #                 Потом is_active=False — пользователь видит неактивную
+                #                 подписку сразу после оплаты.
+                # with_for_update() сериализует с purchase_subscription через row lock:
+                # purchase ждёт нашего commit/rollback savepoint'а, мы видим уже
+                # обновлённый expires_at.
+                locked_result = await session.execute(
+                    select(Subscription)
+                    .where(Subscription.id == sub.id)
+                    .with_for_update()
+                )
+                locked_sub = locked_result.scalar_one_or_none()
 
-        # Всегда деактивируем подписку после попытки (audit #4):
-        # - иначе пользователь видит "Подписка активна" пока ключ уже отозван;
-        # - иначе scheduler бесконечно ретраит один и тот же revoke
-        #   (Docker timeout = 30 сек → 60 тиков в час = тысячи таймаутов).
-        # Цена: если revoke упал — ключ остаётся orphan в awg0.conf/clientsTable.
-        # Админ видит критический лог и чистит руками через
-        # /api/admin/subscriptions/{id}/revoke после починки Docker.
-        sub.is_active = False
+                # Sub удалён / другой scheduler уже обработал / renewal уже сделал
+                # is_active=False → пропускаем, savepoint коммитится без изменений,
+                # row lock освобождается.
+                if locked_sub is None or not locked_sub.is_active:
+                    continue
 
-        if success:
-            revoked.append(sub)
-            logger.info("Ключ отозван: subscription_id=%s", sub.id)
-        else:
-            failed_revoke_subs.append((sub.id, sub.uuid, sub.user_id))
-            logger.warning(
-                "Не удалось отозвать ключ (orphan в Amnezia): subscription_id=%s, "
-                "user_id=%s, pub=%s — нужна ручная очистка",
-                sub.id, sub.user_id, sub.uuid[:16] + "...",
+                # Renewal проскочил между outer SELECT и нашим FOR UPDATE —
+                # expires_at уже в будущем. Не трогаем.
+                if locked_sub.expires_at >= now:
+                    logger.info(
+                        "subscription_id=%s был продлён между SELECT и FOR UPDATE — "
+                        "пропускаем revoke",
+                        locked_sub.id,
+                    )
+                    continue
+
+                # Все проверки пройдены — безопасно отзывать.
+                success = await revoke_client_key(
+                    locked_sub.uuid,
+                    source="scheduler",
+                    reason="expired",
+                )
+
+                # Всегда деактивируем подписку после попытки (audit #4):
+                # - иначе пользователь видит "Подписка активна" пока ключ уже отозван;
+                # - иначе scheduler бесконечно ретраит один и тот же revoke
+                #   (Docker timeout = 30 сек → 60 тиков в час = тысячи таймаутов).
+                # Цена: если revoke упал — ключ остаётся orphan в awg0.conf/clientsTable.
+                # Админ видит критический лог и чистит руками через
+                # /api/admin/subscriptions/{id}/revoke после починки Docker.
+                locked_sub.is_active = False
+
+                if success:
+                    revoked.append(locked_sub)
+                    logger.info("Ключ отозван: subscription_id=%s", locked_sub.id)
+                else:
+                    failed_revoke_subs.append(
+                        (locked_sub.id, locked_sub.uuid, locked_sub.user_id)
+                    )
+                    logger.warning(
+                        "Не удалось отозвать ключ (orphan в Amnezia): subscription_id=%s, "
+                        "user_id=%s, pub=%s — нужна ручная очистка",
+                        locked_sub.id, locked_sub.user_id, locked_sub.uuid[:16] + "...",
+                    )
+        except Exception as loop_err:
+            # Не роняем весь батч из-за одной битой подписки — логируем и идём дальше.
+            # Savepoint уже откатился автоматически, row lock освобождён.
+            logger.exception(
+                "Ошибка при обработке subscription_id=%s в scheduler: %s",
+                sub.id, loop_err,
             )
+            failed_revoke_subs.append((sub.id, sub.uuid, sub.user_id))
 
     if failed_revoke_subs:
         # Дублируем critical-лог одной строкой — проще грепать / алертить

@@ -201,11 +201,18 @@ def validate_login_widget(data: dict[str, str], bot_token: str) -> int:
         if field not in data:
             raise ValueError(f"Отсутствует поле {field}")
 
-    # Проверяем, что auth_date не устарел (5 минут)
+    # Replay-protection: auth_date не устарел И не из будущего.
+    # Идентично _validate_init_data — используем те же константы, чтобы
+    # поведение было предсказуемым для клиента вне зависимости от того,
+    # каким виджетом (WebApp initData или Login Widget) он авторизуется.
+    # Будущее — возможная подделка при расхождении часов в обратную сторону,
+    # отсекаем её CLOCK_SKEW_TOLERANCE_SECONDS (аналог NTP-допуска).
     auth_date = int(data["auth_date"])
     current_time = int(time.time())
-    if current_time - auth_date > 300:  # 5 минут
+    if current_time - auth_date > MAX_INIT_DATA_AGE_SECONDS:
         raise ValueError("auth_date устарел")
+    if auth_date > current_time + CLOCK_SKEW_TOLERANCE_SECONDS:
+        raise ValueError("auth_date из будущего (возможная подделка)")
 
     # Извлекаем hash. Копируем dict, чтобы не мутировать входной словарь
     # caller'а — иначе неожиданный side effect для всех, кто передаёт

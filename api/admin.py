@@ -910,21 +910,26 @@ async def create_broadcast(
     session.add(campaign)
     await session.flush()  # получаем campaign.id
 
-    # Создаём BroadcastDelivery для каждого получателя.
-    # bulk_insert_mappings быстрее, чем insert() в цикле, потому что
-    # генерирует один INSERT с множеством VALUES-строк вместо N запросов.
-    await session.execute(
-        BroadcastDelivery.__table__.insert(),
-        [
-            {
-                "campaign_id": campaign.id,
-                "user_id": u["user_id"],
-                "user_tg_id": u["tg_id"],
-                "status": DeliveryStatus.PENDING.value,
-            }
-            for u in audience
-        ],
-    )
+    # Создаём BroadcastDelivery для каждого получателя батчами по 1000.
+    # Без батчинга один INSERT с N VALUES-строк упрётся в лимит параметров
+    # PostgreSQL (~32 000 bind-vars на запрос). При 4 колонках и 100k юзеров
+    # это 400k параметров → ошибка "too many parameters". 1000 строк = 4000
+    # параметров — с большим запасом под лимит.
+    # Один commit в конце: при сбое посередине откатывается вся кампания,
+    # не оставляя рассылку в полу-созданном состоянии.
+    BATCH_SIZE = 1000
+    rows = [
+        {
+            "campaign_id": campaign.id,
+            "user_id": u["user_id"],
+            "user_tg_id": u["tg_id"],
+            "status": DeliveryStatus.PENDING.value,
+        }
+        for u in audience
+    ]
+    for batch_start in range(0, len(rows), BATCH_SIZE):
+        batch = rows[batch_start:batch_start + BATCH_SIZE]
+        await session.execute(BroadcastDelivery.__table__.insert(), batch)
     await session.commit()
     await session.refresh(campaign)
 

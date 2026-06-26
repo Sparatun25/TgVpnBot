@@ -301,6 +301,7 @@ export default function App() {
                   subscriptionExpiresAt={profile?.subscription.expires_at ?? null}
                   referralCode={profile?.referral_code}
                   referralCount={profile?.referral_count ?? 0}
+                  referralLink={profile?.referral_link ?? null}
                 />
               )}
             </>

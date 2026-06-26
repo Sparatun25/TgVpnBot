@@ -158,47 +158,92 @@ async def admin_config():
 # ─── Статика админ-панели ────────────────────────────────────────────────
 
 
+def _admin_static(
+    file_path: Path,
+    media_type: str | None = None,
+    *,
+    html: bool = False,
+) -> FileResponse:
+    """Отдать статический файл админки с правильными Cache-Control.
+
+    HTML (admin.html): no-cache + no-store + must-revalidate.
+    Без этого после деплоя браузер может показать старую разметку
+    с устаревшими путями к JS — кликнет, получит 404.
+
+    CSS/JS: public, max-age=3600.
+    FileResponse автоматически проставляет Last-Modified по mtime файла,
+    браузер сделает условный GET и получит 304, если файл не менялся.
+    """
+    headers = {
+        "Cache-Control": (
+            "no-cache, no-store, must-revalidate"
+            if html
+            else "public, max-age=3600"
+        ),
+        "Pragma": "no-cache" if html else None,
+        "Expires": "0" if html else None,
+    }
+    headers = {k: v for k, v in headers.items() if v is not None}
+    return FileResponse(file_path, media_type=media_type, headers=headers)
+
+
 @router.get("/admin", response_class=HTMLResponse)
 async def admin_page():
     """Главная страница админ-панели."""
-    return FileResponse(ADMIN_STATIC_DIR / "admin.html")
+    return _admin_static(ADMIN_STATIC_DIR / "admin.html", html=True)
 
 
 @router.get("/admin/base.css")
 async def admin_base_css():
-    return FileResponse(ADMIN_STATIC_DIR / "admin-base.css", media_type="text/css")
+    return _admin_static(
+        ADMIN_STATIC_DIR / "admin-base.css", media_type="text/css"
+    )
 
 
 @router.get("/admin/sidebar.css")
 async def admin_sidebar_css():
-    return FileResponse(ADMIN_STATIC_DIR / "admin-sidebar.css", media_type="text/css")
+    return _admin_static(
+        ADMIN_STATIC_DIR / "admin-sidebar.css", media_type="text/css"
+    )
 
 
 @router.get("/admin/metrics.css")
 async def admin_metrics_css():
-    return FileResponse(ADMIN_STATIC_DIR / "admin-metrics.css", media_type="text/css")
+    return _admin_static(
+        ADMIN_STATIC_DIR / "admin-metrics.css", media_type="text/css"
+    )
 
 
 @router.get("/admin/components.css")
 async def admin_components_css():
-    return FileResponse(ADMIN_STATIC_DIR / "admin-components.css", media_type="text/css")
+    return _admin_static(
+        ADMIN_STATIC_DIR / "admin-components.css", media_type="text/css"
+    )
 
 
 @router.get("/admin/overlays.css")
 async def admin_overlays_css():
-    return FileResponse(ADMIN_STATIC_DIR / "admin-overlays.css", media_type="text/css")
+    return _admin_static(
+        ADMIN_STATIC_DIR / "admin-overlays.css", media_type="text/css"
+    )
 
 
 @router.get("/admin/app.js")
 async def admin_app_js():
-    return FileResponse(ADMIN_STATIC_DIR / "admin-app.js", media_type="application/javascript")
+    return _admin_static(
+        ADMIN_STATIC_DIR / "admin-app.js", media_type="application/javascript"
+    )
 
 
 @router.get("/admin/core.js")
 async def admin_core_js():
-    return FileResponse(ADMIN_STATIC_DIR / "admin-core.js", media_type="application/javascript")
+    return _admin_static(
+        ADMIN_STATIC_DIR / "admin-core.js", media_type="application/javascript"
+    )
 
 
 @router.get("/admin/views.js")
 async def admin_views_js():
-    return FileResponse(ADMIN_STATIC_DIR / "admin-views.js", media_type="application/javascript")
+    return _admin_static(
+        ADMIN_STATIC_DIR / "admin-views.js", media_type="application/javascript"
+    )

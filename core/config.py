@@ -62,10 +62,11 @@ class Settings(BaseSettings):
 
     # Payment stub: если True — /payment/create сразу зачисляет деньги на баланс
     # без обращения к ЮKassa. Используется пока не подключён реальный провайдер.
-    # В проде ОБЯЗАТЕЛЬНО False (см. audit #2): иначе любой POST /api/payment/create
-    # зачислит деньги без реальной оплаты. Если в проде остался True — это критический
-    # финансовый баг, проверяйте .env: должно быть PAYMENT_STUB_MODE=False.
-    payment_stub_mode: bool = True
+    # Default = False чтобы прод-деплой ОБЯЗАН был явно поднять флаг в .env
+    # для приёма оплаты в stub-режиме. Иначе забывчивый деплой = любой POST
+    # /api/payment/create зачислит деньги без реальной оплаты.
+    # Для тестов оплаты локально: PAYMENT_STUB_MODE=True в .env.
+    payment_stub_mode: bool = False
 
     # Шифрование connection_url в БД (Fernet, симметричный AES-128 + HMAC).
     # Если ключ не задан — encryption отключён, connection_url хранится plaintext
@@ -73,6 +74,14 @@ class Settings(BaseSettings):
     # Генерация ключа:
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     db_encryption_key: SecretStr | None = None
+
+    # Окружение: "development" или "production".
+    # В production api/main.py:lifespan жёстко проверяет наличие
+    # DB_ENCRYPTION_KEY — без него connection_url хранится plaintext
+    # и утечка БД = утечка всех VPN-ключей. Если не задано — считаем dev,
+    # стартап-чек не срабатывает (для удобства локальной разработки).
+    # В проде ОБЯЗАТЕЛЬНО задать ENVIRONMENT=production в .env.
+    environment: Literal["development", "production"] = "development"
 
     # Observability (см. core/logging.py и core/metrics.py)
     # ─────────────────────────────────────────────────────────
@@ -93,6 +102,13 @@ class Settings(BaseSettings):
     # метрики в .db-файлы здесь, /metrics handler агрегирует через
     # MultiProcessCollector).
     prometheus_multiproc_dir: str = "/tmp/prometheus_multiproc"
+
+    # Bearer-токен для /metrics endpoint. Если задан — Prometheus должен
+    # слать Authorization: Bearer <token>. Если не задан — endpoint открыт
+    # (как раньше). В production ЗАДАЙТЕ токен И закрывайте доступ на
+    # уровне сети (nginx IP-allowlist / internal Docker network).
+    # Генерация: python -c "import secrets; print(secrets.token_urlsafe(32))"
+    prometheus_metrics_token: SecretStr | None = None
 
     # Рассылки (broadcasts) в админке.
     # ─────────────────────────────────────────────────────────

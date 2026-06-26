@@ -148,6 +148,12 @@ assert not _missing_in_tariffs, (
 # пока нет настоящего счётчика трафика на AmneziaWG-сервере.
 ACTIVATION_GRACE_SECONDS = 120
 
+# Окно «онлайн» для статуса в дашборде. persistent_keepalive на клиенте 25 сек,
+# значит handshake каждые ~25 сек при активном туннеле. 3 минуты — запас
+# на jitter и кратковременные разрывы. Если handshake был > 3 мин назад —
+# клиент точно не в туннеле.
+ONLINE_HANDSHAKE_WINDOW_SECONDS = 180
+
 
 @router.get("/tariffs")
 async def get_tariffs() -> dict:
@@ -266,6 +272,15 @@ async def get_profile(
     # Триал когда-либо использовался — просто проверяем флаг.
     has_used_trial = any(s.plan_type == PlanType.TRIAL for s in user.subscriptions)
 
+    # Трафик через WireGuard-туннель. Поля обновляются фоновым сборщиком
+    # services/traffic_collector.py (раз в traffic_collect_interval_seconds).
+    # Если контейнер Amnezia недоступен — поля остаются с прошлым значением
+    # или нулями для нового юзера, что корректно отображается в дашборде.
+    is_online = (
+        user.last_handshake_at is not None
+        and (now - user.last_handshake_at).total_seconds() < ONLINE_HANDSHAKE_WINDOW_SECONDS
+    )
+
     # Сколько пользователей пришло по реферальному коду текущего юзера.
     # referred_by_id хранит tg_id пригласившего (см. database/models.py).
     referral_count_q = select(func.count(User.id)).where(User.referred_by_id == tg_id)
@@ -286,6 +301,14 @@ async def get_profile(
             "plan_type": active_sub.plan_type if active_sub else None,
             "expires_at": active_sub.expires_at.isoformat() if active_sub else None,
             "connection_url": decrypt_connection_url(active_sub.connection_url) if active_sub and active_sub.connection_url else None,
+        },
+        "traffic": {
+            "total_bytes_received": user.total_bytes_received,
+            "total_bytes_sent": user.total_bytes_sent,
+            "last_handshake_at": (
+                user.last_handshake_at.isoformat() if user.last_handshake_at else None
+            ),
+            "is_online": is_online,
         },
         "has_used_trial": has_used_trial,
         "bot_username": bot_username,

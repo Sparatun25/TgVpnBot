@@ -12,6 +12,7 @@ const POLL_INTERVAL_MS = 2000
 const POLL_TIMEOUT_MS = 120000
 const FETCH_TIMEOUT_MS = 8000
 const SUCCESS_DISMISS_MS = 2000
+const MIN_TOPUP_RUBLES = 10
 
 export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) {
   const { tg, getInitData } = useTelegram()
@@ -121,7 +122,7 @@ export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) 
 
   const handleTopUp = async () => {
     const amountValue = parseInt(amount)
-    if (!amountValue || amountValue < 10) {
+    if (!amountValue || amountValue < MIN_TOPUP_RUBLES) {
       tg?.HapticFeedback?.notificationOccurred('error')
       return
     }
@@ -155,6 +156,22 @@ export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) 
     setPaymentStatus('pending')
   }
 
+  const formattedBalance = (balance / 100).toLocaleString('ru-RU', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+
+  const amountValue = parseInt(amount)
+  const isAmountInvalid = amount !== '' && (!amountValue || amountValue < MIN_TOPUP_RUBLES)
+  const isSubmitDisabled =
+    !amount ||
+    !amountValue ||
+    amountValue < MIN_TOPUP_RUBLES ||
+    isProcessing ||
+    paymentStatus !== 'idle'
+
+  const inputDisabled = isProcessing || paymentStatus !== 'idle'
+
   return (
     <motion.div
       className="balance-screen"
@@ -163,137 +180,134 @@ export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) 
       transition={{ duration: 0.4 }}
     >
       <motion.div
-        className="balance-card"
-        initial={{ opacity: 0, y: 20 }}
+        className="balance-hero"
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.1 }}
       >
-        <div className="balance-label">Текущий баланс</div>
-        <div className="balance-amount">
+        <div className="balance-hero__label">Текущий баланс</div>
+        <div className="balance-hero__amount">
           <motion.span
-            className="balance-value"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
+            className="balance-hero__value"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.6, delay: 0.25 }}
           >
-            {(balance / 100).toFixed(2)}
+            {formattedBalance}
           </motion.span>
-          <span className="balance-currency">₽</span>
+          <span className="balance-hero__currency">₽</span>
         </div>
+      </motion.div>
 
-        {paymentStatus === 'pending' && (
-          <motion.div
-            className="balance-pending"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            role="status"
-            aria-live="polite"
-          >
-            <div className="pending-spinner" aria-hidden="true" />
-            <span>Ожидание подтверждения оплаты...</span>
+      {paymentStatus === 'pending' && (
+        <motion.div
+          className="balance-status balance-status--pending"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="balance-status__dot" aria-hidden="true" />
+          <span className="balance-status__text">Ожидание подтверждения оплаты…</span>
+          <div className="balance-status__actions">
             <button
-              className="balance-pending-cancel"
+              className="balance-status__btn"
               onClick={handleCancelPending}
               aria-label="Отменить ожидание оплаты"
             >
               Отменить
             </button>
-          </motion.div>
-        )}
+          </div>
+        </motion.div>
+      )}
 
-        {paymentStatus === 'timeout' && (
-          <motion.div
-            className="balance-timeout"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            role="alert"
-          >
-            <span>Время ожидания истекло. Если оплата прошла, обновите экран.</span>
-            <div className="balance-timeout-actions">
-              <button
-                className="balance-timeout-retry"
-                onClick={handleRetryPending}
-              >
-                Повторить
-              </button>
-              <button
-                className="balance-timeout-dismiss"
-                onClick={handleCancelPending}
-              >
-                Закрыть
-              </button>
-            </div>
-          </motion.div>
-        )}
+      {paymentStatus === 'timeout' && (
+        <motion.div
+          className="balance-status balance-status--timeout"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          role="alert"
+        >
+          <span className="balance-status__dot" aria-hidden="true" />
+          <span className="balance-status__text">
+            Время ожидания истекло. Если оплата прошла, обновите экран.
+          </span>
+          <div className="balance-status__actions">
+            <button className="balance-status__btn" onClick={handleRetryPending}>
+              Повторить
+            </button>
+            <button className="balance-status__btn" onClick={handleCancelPending}>
+              Закрыть
+            </button>
+          </div>
+        </motion.div>
+      )}
 
-        {paymentStatus === 'success' && (
-          <motion.div
-            className="balance-success"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.3 }}
-            role="status"
-            aria-live="polite"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
-              <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-            <span>Баланс пополнен!</span>
-          </motion.div>
-        )}
-      </motion.div>
+      {paymentStatus === 'success' && (
+        <motion.div
+          className="balance-status balance-status--success"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="balance-status__dot" aria-hidden="true" />
+          <span className="balance-status__text">Баланс пополнен</span>
+        </motion.div>
+      )}
 
       <motion.div
-        className="topup-section"
-        initial={{ opacity: 0, y: 20 }}
+        className="balance-topup"
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.2 }}
       >
-        <h3 className="topup-title">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <rect x="2" y="5" width="20" height="14" rx="2" />
-            <path d="M2 10H22" />
-          </svg>
-          Пополнить через СБП
-        </h3>
-
-        <label htmlFor="topup-amount" className="visually-hidden">
-          Сумма пополнения в рублях
-        </label>
-        <div className="topup-input-wrapper">
-          <input
-            id="topup-amount"
-            type="number"
-            inputMode="numeric"
-            className="topup-input"
-            placeholder="Введите сумму"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            min="10"
-            step="10"
-            disabled={isProcessing || paymentStatus !== 'idle'}
-            aria-describedby={amount !== '' && parseInt(amount) < 10 ? 'topup-amount-hint' : undefined}
-            aria-invalid={amount !== '' && parseInt(amount) < 10 ? true : undefined}
-          />
-          <span className="topup-input-suffix" aria-hidden="true">₽</span>
+        <div className="balance-topup__header">
+          <h2 className="balance-topup__title">Пополнить через СБП</h2>
+          <p className="balance-topup__subtitle">От {MIN_TOPUP_RUBLES} ₽</p>
         </div>
-        {amount !== '' && parseInt(amount) < 10 && (
-          <div id="topup-amount-hint" className="topup-amount-hint">
-            Минимальная сумма пополнения — 10 ₽
-          </div>
-        )}
 
-        <div className="topup-quick-amounts">
+        <div>
+          <label htmlFor="topup-amount" className="visually-hidden">
+            Сумма пополнения в рублях
+          </label>
+          <div className="balance-input-wrapper">
+            <input
+              id="topup-amount"
+              type="number"
+              inputMode="numeric"
+              className="balance-input"
+              placeholder="0"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              min={MIN_TOPUP_RUBLES}
+              step={10}
+              disabled={inputDisabled}
+              aria-describedby={isAmountInvalid ? 'topup-amount-hint' : undefined}
+              aria-invalid={isAmountInvalid ? true : undefined}
+            />
+            <span className="balance-input-suffix" aria-hidden="true">₽</span>
+          </div>
+          {isAmountInvalid && (
+            <div id="topup-amount-hint" className="balance-amount-hint">
+              Минимальная сумма пополнения — {MIN_TOPUP_RUBLES} ₽
+            </div>
+          )}
+        </div>
+
+        <div className="balance-quick-amounts">
           {quickAmounts.map((value) => (
             <motion.button
               key={value}
-              className={`topup-quick-button ${amount === value.toString() ? 'topup-quick-button-active' : ''}`}
+              type="button"
+              className={`balance-quick-btn ${amount === value.toString() ? 'balance-quick-btn--active' : ''}`}
               onClick={() => handleQuickAmount(value)}
-              disabled={isProcessing || paymentStatus !== 'idle'}
+              disabled={inputDisabled}
               whileTap={{ scale: 0.96 }}
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
             >
@@ -303,55 +317,30 @@ export function BalanceScreen({ balance, onBalanceUpdate }: BalanceScreenProps) 
         </div>
 
         <motion.button
-          className="topup-button"
+          type="button"
+          className="balance-submit"
           onClick={handleTopUp}
-          disabled={!amount || parseInt(amount) < 10 || isProcessing || paymentStatus !== 'idle'}
-          whileTap={{ scale: 0.96 }}
-          initial={{ opacity: 0, y: 10 }}
+          disabled={isSubmitDisabled}
+          whileTap={{ scale: 0.985 }}
+          initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.3 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
         >
-          {isProcessing ? 'Создание платежа...' : 'Пополнить'}
+          {isProcessing ? 'Создание платежа…' : 'Пополнить'}
         </motion.button>
       </motion.div>
 
       <motion.div
-        className="balance-info"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.4 }}
-      >
-        <div className="balance-info-item">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
-            <path d="M13 2L3 14H12L11 22L21 10H12L13 2Z" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <div>
-            <div className="balance-info-title">Мгновенное зачисление</div>
-            <div className="balance-info-subtitle">Баланс пополняется сразу после оплаты</div>
-          </div>
-        </div>
-        <div className="balance-info-item">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
-            <path d="M12 22S8 18 8 12V6L12 2L16 6V12C16 18 12 22 12 22Z" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <div>
-            <div className="balance-info-title">Безопасная оплата</div>
-            <div className="balance-info-subtitle">Через систему быстрых платежей</div>
-          </div>
-        </div>
-      </motion.div>
-
-      <motion.div
-        className="balance-cat-companion"
+        className="balance-mascot"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.5, ease: [0.32, 0.72, 0, 1] }}
+        transition={{ duration: 0.5, delay: 0.4, ease: [0.32, 0.72, 0, 1] }}
         aria-hidden="true"
       >
         <img
           src="/cat-companion.png"
           alt=""
-          className="balance-cat-image"
+          className="balance-mascot__img"
           draggable={false}
         />
       </motion.div>

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { TelegramUser } from '../hooks/useTelegram'
-import { useTelegram } from '../hooks/useTelegram'
+import { TelegramUser, useTelegram } from '../hooks/useTelegram'
 
 interface ProfileScreenProps {
   user: TelegramUser | null
@@ -18,6 +17,7 @@ interface ProfileScreenProps {
 }
 
 const COPIED_INDICATOR_MS = 2000
+const REFERRAL_GOAL = 3
 
 export function ProfileScreen({
   user,
@@ -52,8 +52,7 @@ export function ProfileScreen({
     }
   }
 
-  const referralGoal = 3
-  const referralProgress = Math.min(referralCount / referralGoal, 1)
+  const referralProgress = Math.min(referralCount / REFERRAL_GOAL, 1)
 
   const handleCopyReferral = async () => {
     if (!referralLink) return
@@ -86,7 +85,16 @@ export function ProfileScreen({
     }
   }
 
-  const isActive = subscriptionExpiresAt && new Date(subscriptionExpiresAt) > new Date()
+  const isActive = subscriptionExpiresAt ? new Date(subscriptionExpiresAt) > new Date() : false
+  const hasExpiry = !!subscriptionExpiresAt
+  const expiresDateLabel = subscriptionExpiresAt
+    ? new Date(subscriptionExpiresAt).toLocaleDateString('ru-RU', {
+        day: 'numeric',
+        month: 'long',
+      })
+    : null
+
+  const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(' ')
 
   return (
     <motion.div
@@ -97,22 +105,20 @@ export function ProfileScreen({
     >
       <motion.div
         className="profile-header"
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.1 }}
+        transition={{ duration: 0.4, delay: 0.05 }}
       >
-        <div className="profile-avatar">
+        <div className="profile-avatar" aria-hidden={user?.photo_url ? undefined : 'true'}>
           {user?.photo_url ? (
             <img
               src={user.photo_url}
-              alt={user.first_name
-                ? `${user.first_name}${user.last_name ? ` ${user.last_name}` : ''}, фото профиля`
-                : 'Фото профиля'}
+              alt={fullName ? `${fullName}, фото профиля` : 'Фото профиля'}
               className="profile-avatar-image"
             />
           ) : (
-            <div className="profile-avatar-placeholder" aria-hidden="true">
-              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <div className="profile-avatar-placeholder">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                 <path d="M20 21V19C20 16.7909 18.2091 15 16 15H8C5.79086 15 4 16.7909 4 19V21" strokeLinecap="round" strokeLinejoin="round" />
                 <circle cx="12" cy="7" r="4" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -120,98 +126,96 @@ export function ProfileScreen({
           )}
         </div>
         <div className="profile-info">
-          <div className="profile-name">
-            {user?.first_name} {user?.last_name}
-          </div>
+          <div className="profile-name">{fullName || 'Пользователь'}</div>
           {user?.username && (
             <div className="profile-username">@{user.username}</div>
           )}
         </div>
       </motion.div>
 
+      <hr className="profile-divider" aria-hidden="true" />
+
       <motion.div
-        className={`profile-subscription-card ${isActive ? 'active' : 'expired'}`}
-        initial={{ opacity: 0, y: 20 }}
+        className={`profile-subscription ${isActive ? 'profile-subscription--active' : ''}`}
+        initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.2 }}
+        transition={{ duration: 0.4, delay: 0.15 }}
       >
-        <div className="subscription-status">
-          <div className={`status-dot ${isActive ? 'active' : 'expired'}`} aria-hidden="true" />
-          <span className="status-label">
-            {isActive ? 'Подписка активна' : 'Подписка неактивна'}
-          </span>
+        <div className="profile-subscription__status">
+          <span className="profile-subscription__dot" aria-hidden="true" />
+          <span>{isActive ? 'Подписка активна' : 'Подписка неактивна'}</span>
         </div>
-        {subscriptionExpiresAt && (
-          <div className="subscription-date">
-            {isActive
-              ? `до ${new Date(subscriptionExpiresAt).toLocaleDateString('ru-RU', {
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric',
-                })}`
-              : 'Истекла'}
+        {hasExpiry && (
+          <div className={`profile-subscription__date ${isActive ? '' : 'profile-subscription__date--muted'}`}>
+            {isActive ? `до ${expiresDateLabel}` : 'Истекла'}
           </div>
         )}
       </motion.div>
 
-      <motion.div
-        className="referral-section"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.3 }}
-      >
-        <h3 className="referral-title">Пригласи друга</h3>
-        <p className="referral-subtitle">Получи 50 ₽ за каждого приглашённого друга</p>
+      <hr className="profile-divider" aria-hidden="true" />
 
-        <div className="referral-progress">
-          <div className="progress-header">
-            <span>Пригласите {referralGoal} друзей — месяц бесплатно!</span>
-            <span className="progress-count">
-              {referralCount}/{referralGoal}
+      <motion.div
+        className="profile-referral"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.25 }}
+      >
+        <div className="profile-referral__header">
+          <h2 className="profile-referral__title">Пригласи друга</h2>
+          <p className="profile-referral__subtitle">
+            Получи 50 ₽ за каждого друга. {REFERRAL_GOAL} приглашённых — месяц бесплатно.
+          </p>
+        </div>
+
+        <div className="profile-referral__progress">
+          <div className="profile-referral__progress-text">
+            <span>Прогресс</span>
+            <span>
+              <span className="profile-referral__count">{referralCount}</span> / {REFERRAL_GOAL}
             </span>
           </div>
           <div
-            className="progress-bar"
+            className="profile-referral__bar"
             role="progressbar"
             aria-valuenow={referralCount}
             aria-valuemin={0}
-            aria-valuemax={referralGoal}
-            aria-label={`Приглашено ${referralCount} из ${referralGoal} друзей`}
+            aria-valuemax={REFERRAL_GOAL}
+            aria-label={`Приглашено ${referralCount} из ${REFERRAL_GOAL} друзей`}
           >
             <motion.div
-              className="progress-fill"
-              initial={{ width: 0 }}
-              animate={{ width: `${referralProgress * 100}%` }}
-              transition={{ duration: 0.8, delay: 0.5, ease: [0.32, 0.72, 0, 1] }}
+              className="profile-referral__fill"
+              initial={{ transform: 'scaleX(0)' }}
+              animate={{ transform: `scaleX(${referralProgress})` }}
+              transition={{ duration: 0.8, delay: 0.4, ease: [0.32, 0.72, 0, 1] }}
               aria-hidden="true"
             />
           </div>
         </div>
 
-        <motion.button
-          className={`referral-copy-button ${copied ? 'copied' : ''}`}
+        <button
+          type="button"
+          className={`profile-referral__copy ${copied ? 'profile-referral__copy--copied' : ''}`}
           onClick={handleCopyReferral}
           disabled={!referralLink}
-          whileTap={{ scale: 0.96 }}
           aria-label={copied ? 'Скопировано' : 'Скопировать реферальную ссылку'}
         >
           {copied ? (
             <>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               Скопировано
             </>
           ) : (
             <>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <rect x="9" y="9" width="13" height="13" rx="2" />
                 <path d="M5 15H4C2.89543 15 2 14.1046 2 13V4C2 2.89543 2.89543 2 4 2H13C14.1046 2 15 2.89543 15 4V5" strokeLinecap="round" />
               </svg>
               Скопировать ссылку
             </>
           )}
-        </motion.button>
+        </button>
 
         {/* Отдельная live-область для анонса результата копирования.
             Сам <button> не должен быть live-region (role=status на интерактивном
@@ -223,49 +227,48 @@ export function ProfileScreen({
         </div>
 
         {referralCode && (
-          <div className="referral-code-display">
-            Код: <span className="code-value">{referralCode}</span>
+          <div className="profile-referral__progress-text" style={{ marginTop: -4 }}>
+            <span>Код</span>
+            <span className="profile-referral__count">{referralCode}</span>
           </div>
         )}
       </motion.div>
 
-      <motion.div
-        className="profile-links"
-        initial={{ opacity: 0, y: 20 }}
+      <hr className="profile-divider" aria-hidden="true" />
+
+      <motion.a
+        href="https://t.me/OnyxVpnSupport"
+        className="profile-link"
+        onClick={(e) => {
+          e.preventDefault()
+          openExternal('https://t.me/OnyxVpnSupport')
+        }}
+        initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.4 }}
+        transition={{ duration: 0.4, delay: 0.35 }}
       >
-        <a
-          href="https://t.me/OnyxVpnSupport"
-          className="profile-link"
-          onClick={(e) => {
-            e.preventDefault()
-            openExternal('https://t.me/OnyxVpnSupport')
-          }}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-            <path d="M21 11.5A8.38 8.38 0 0 1 12.5 20A8.5 8.5 0 0 1 3 11.5A8.38 8.38 0 0 1 11.5 3A8.5 8.5 0 0 1 21 11.5Z" />
-            <path d="M8 12L11 15L16 9" />
+        <span>Поддержка</span>
+        <span className="profile-link__arrow" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M5 12H19M13 6L19 12L13 18" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <span>Поддержка</span>
-        </a>
-      </motion.div>
+        </span>
+      </motion.a>
 
       <motion.div
-        className="profile-cat-companion"
-        initial={{ opacity: 0, scale: 0.85 }}
-        animate={{ opacity: 1, scale: 1 }}
+        className="profile-mascot"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.5, ease: [0.32, 0.72, 0, 1] }}
-        aria-hidden="true"
       >
         <img
           src="/cat-about.png"
           alt=""
-          className="profile-cat-image"
+          className="profile-mascot__img"
           draggable={false}
         />
-        <p className="profile-cat-quote">
-          «Спасибо, что выбрали Onyx VPN!»
+        <p className="profile-mascot__quote">
+          «Спасибо, что выбрали Onyx VPN»
         </p>
       </motion.div>
     </motion.div>

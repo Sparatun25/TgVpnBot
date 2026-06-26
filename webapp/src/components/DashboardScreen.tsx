@@ -1,22 +1,60 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useTelegram } from '../hooks/useTelegram'
 
+export interface TrafficStats {
+  total_bytes_received: number
+  total_bytes_sent: number
+  last_handshake_at: string | null
+  is_online: boolean
+}
+
 interface DashboardScreenProps {
   trialExpiresAt: string | null
+  traffic: TrafficStats | null
   onBuySubscription: () => void
 }
 
-export function DashboardScreen({ trialExpiresAt, onBuySubscription }: DashboardScreenProps) {
+const _KB = 1024
+const _MB = _KB * 1024
+const _GB = _MB * 1024
+
+function formatBytes(numBytes: number): { value: string; unit: string } {
+  if (!numBytes || numBytes <= 0) {
+    return { value: '0', unit: 'МБ' }
+  }
+  if (numBytes < _MB) {
+    return { value: `${(numBytes / _KB).toFixed(1)}`, unit: 'КБ' }
+  }
+  if (numBytes < _GB) {
+    return { value: `${(numBytes / _MB).toFixed(1)}`, unit: 'МБ' }
+  }
+  return { value: `${(numBytes / _GB).toFixed(2)}`, unit: 'ГБ' }
+}
+
+function formatLastSeen(isoString: string | null): string {
+  if (!isoString) return 'нет подключений'
+  const last = new Date(isoString).getTime()
+  if (Number.isNaN(last)) return 'нет подключений'
+  const diffSec = Math.max(0, Math.floor((Date.now() - last) / 1000))
+  if (diffSec < 60) return 'только что'
+  if (diffSec < 3600) {
+    const minutes = Math.floor(diffSec / 60)
+    return `${minutes} мин назад`
+  }
+  if (diffSec < 86400) {
+    const hours = Math.floor(diffSec / 3600)
+    return `${hours} ч назад`
+  }
+  const days = Math.floor(diffSec / 86400)
+  return `${days} дн назад`
+}
+
+export function DashboardScreen({ trialExpiresAt, traffic, onBuySubscription }: DashboardScreenProps) {
   const { tg } = useTelegram()
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0 })
   const [countdownAnnouncement, setCountdownAnnouncement] = useState('')
   const lastAnnouncedThresholdRef = useRef<number | null>(null)
-  const trafficUsed = 12.4
-  const todayTraffic = 1.1
-  const protectionTime = 52
-  const maxSpeed = 85
-  const connections = 3
 
   useEffect(() => {
     if (!trialExpiresAt) return
@@ -32,9 +70,6 @@ export function DashboardScreen({ trialExpiresAt, onBuySubscription }: Dashboard
         const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
         setTimeLeft({ days, hours, minutes })
 
-        // Пороговые анонсы: «менее 24ч» и «1 час». Без них экранный диктор
-        // молчит весь триал и пользователь не знает, что время подходит к концу.
-        // Ref-хранилище гарантирует, что один порог анонсируется ровно один раз.
         const totalHours = days * 24 + hours
         let nextThreshold: number | null = null
         if (totalHours <= 1) nextThreshold = 1
@@ -66,6 +101,13 @@ export function DashboardScreen({ trialExpiresAt, onBuySubscription }: Dashboard
 
   const progress = ((timeLeft.days * 24 + timeLeft.hours) / (3 * 24)) * 100
 
+  const totalReceived = traffic?.total_bytes_received ?? 0
+  const totalSent = traffic?.total_bytes_sent ?? 0
+  const receivedFmt = formatBytes(totalReceived)
+  const sentFmt = formatBytes(totalSent)
+  const lastSeenText = formatLastSeen(traffic?.last_handshake_at ?? null)
+  const isOnline = traffic?.is_online ?? false
+
   return (
     <motion.div
       className="dashboard-screen"
@@ -81,17 +123,17 @@ export function DashboardScreen({ trialExpiresAt, onBuySubscription }: Dashboard
       >
         <div className="status-header">
           <div className="status-indicator">
-            <div className="status-dot" aria-hidden="true" />
-            <span className="status-text">Активен</span>
+            <div
+              className={`status-dot ${isOnline ? 'active' : 'expired'}`}
+              aria-hidden="true"
+            />
+            <span className="status-text">{isOnline ? 'Защищён' : 'Не подключён'}</span>
           </div>
           <div className="status-countdown">
             Осталось {timeLeft.days} дн {timeLeft.hours} ч
           </div>
         </div>
 
-        {/* Скрытая live-область для пороговых анонсов (<24ч, <1ч, истёк).
-            Видимый countdown обновляется каждую минуту — слишком часто для
-            диктора; здесь срабатывает только при пересечении порога. */}
         <div className="visually-hidden" role="status" aria-live="polite" aria-atomic="true">
           {countdownAnnouncement}
         </div>
@@ -139,11 +181,13 @@ export function DashboardScreen({ trialExpiresAt, onBuySubscription }: Dashboard
             animate={{ opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.5 }}
           >
-            {trafficUsed}
+            {receivedFmt.value}
           </motion.span>
-          <span className="usage-unit">ГБ</span>
+          <span className="usage-unit">{receivedFmt.unit}</span>
         </div>
-        <div className="usage-today">Сегодня: {todayTraffic} ГБ</div>
+        <div className="usage-today">
+          Отправлено: {sentFmt.value} {sentFmt.unit}
+        </div>
       </motion.div>
 
       <motion.div
@@ -155,115 +199,26 @@ export function DashboardScreen({ trialExpiresAt, onBuySubscription }: Dashboard
         <div className="card-title">Безопасность</div>
         <div className="security-items">
           <div className="security-item">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isOnline ? '#10B981' : '#6B7280'} strokeWidth="2" aria-hidden="true">
               <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <span>IP защищён</span>
+            <span>{isOnline ? 'IP защищён' : 'IP не защищён'}</span>
           </div>
           <div className="security-item">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={isOnline ? '#10B981' : '#6B7280'} strokeWidth="2" aria-hidden="true">
               <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <span>DNS защищён</span>
+            <span>{isOnline ? 'DNS защищён' : 'DNS не защищён'}</span>
           </div>
           <div className="security-item">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span>Соединение зашифровано</span>
           </div>
         </div>
-      </motion.div>
-
-      <motion.div
-        className="stats-card"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.4 }}
-      >
-        <div className="card-title">Статистика</div>
-        <div className="stats-grid">
-          <div className="stat-item">
-            <div className="stat-value">
-              <motion.span
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.6, delay: 0.6 }}
-              >
-                {protectionTime}
-              </motion.span>
-              ч
-            </div>
-            <div className="stat-label">Время защиты</div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-value">
-              <motion.span
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.6, delay: 0.7 }}
-              >
-                {maxSpeed}
-              </motion.span>
-              Мбит/с
-            </div>
-            <div className="stat-label">Макс. скорость</div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-value">
-              <motion.span
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.6, delay: 0.8 }}
-              >
-                {connections}
-              </motion.span>
-            </div>
-            <div className="stat-label">Подключений</div>
-          </div>
-        </div>
-      </motion.div>
-
-      <motion.div
-        className="insights-card"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.5 }}
-      >
-        <div className="card-title">Инсайты</div>
-        <div className="insight-item">
-          <div className="insight-icon" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="20" x2="18" y2="10" />
-              <line x1="12" y1="20" x2="12" y2="4" />
-              <line x1="6" y1="20" x2="6" y2="14" />
-              <line x1="3" y1="20" x2="21" y2="20" />
-            </svg>
-          </div>
-          <div className="insight-text">
-            Вы использовали VPN чаще, чем 84% новых пользователей
-          </div>
-        </div>
-        <div className="insight-item">
-          <div className="insight-icon" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
-            </svg>
-          </div>
-          <div className="insight-text">
-            За эту неделю VPN защитил ваше соединение 52 часа
-          </div>
-        </div>
-        <div className="insight-item">
-          <div className="insight-icon" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              <path d="M9 12l2 2 4-4" />
-            </svg>
-          </div>
-          <div className="insight-text">
-            Сегодня защищено 100% ваших подключений
-          </div>
+        <div className="security-last-seen">
+          Последняя активность: {lastSeenText}
         </div>
       </motion.div>
     </motion.div>

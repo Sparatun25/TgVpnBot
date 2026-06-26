@@ -967,6 +967,7 @@ body::before {
 
 .success-icon {
   position: relative;
+  color: #10B981;
 }
 
 .preparing-title {
@@ -1274,6 +1275,7 @@ details[open] .help-toggle svg {
 
 .launch-failed-icon {
   margin-bottom: 16px;
+  color: #F59E0B;
 }
 
 .launch-failed-title {
@@ -1695,6 +1697,15 @@ details[open] .help-toggle svg {
   align-items: center;
   gap: 12px;
   font-size: 15px;
+  color: #10B981;
+}
+
+.security-last-seen {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--onyx-border);
+  font-size: 13px;
+  color: var(--onyx-text-muted);
 }
 
 .stats-grid {
@@ -1829,6 +1840,7 @@ details[open] .help-toggle svg {
   align-items: center;
   gap: 12px;
   font-size: 15px;
+  color: #10B981;
 }
 
 .tariffs-grid {
@@ -2830,4 +2842,1462 @@ textarea:focus-visible {
 button svg,
 button img {
   pointer-events: none;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   PREMIUM POST-CONNECT REDESIGN
+   Экраны после успешного подключения Amnezia: Dashboard / Tariffs / Balance /
+   Profile / BottomNav. Асимметрия, тонкие hairline-разделители, display-serif
+   как визуальный якорь. Inline-CTA вместо заполненных кнопок. Фиолетовый акцент
+   бренда (не turquoise), зелёный — только для status-индикаторов.
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── DASHBOARD ────────────────────────────────────────────────────────────── */
+
+.dashboard-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  padding-top: 4px;
+}
+
+.dashboard-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.dashboard-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--onyx-text-muted);
+}
+
+.dashboard-eyebrow__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--onyx-success);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+  animation: dashboard-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes dashboard-pulse {
+  0%, 100% { box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18); }
+  50% { box-shadow: 0 0 0 5px rgba(16, 185, 129, 0.05); }
+}
+
+.dashboard-date {
+  font-family: var(--font-display);
+  font-size: 40px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--onyx-white);
+}
+
+.dashboard-date__preposition {
+  color: var(--onyx-text-muted);
+  font-size: 22px;
+  font-style: italic;
+  margin-right: 8px;
+}
+
+.dashboard-progress {
+  height: 1.5px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 1px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.dashboard-progress__fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--onyx-accent-soft) 0%, var(--onyx-accent) 100%);
+  border-radius: 1px;
+  transform-origin: left center;
+}
+
+.dashboard-countdown {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.dashboard-countdown__value {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  color: var(--onyx-white);
+}
+
+.dashboard-countdown__label {
+  font-size: 13px;
+  color: var(--onyx-text-muted);
+  letter-spacing: 0.02em;
+}
+
+/* Inline-CTA: текст + стрелка. Hover: подчёркивание появляется, стрелка едет вправо. */
+.dashboard-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  align-self: flex-start;
+  background: transparent;
+  border: none;
+  padding: 4px 0;
+  margin-top: 6px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--onyx-accent-soft);
+  cursor: pointer;
+  letter-spacing: -0.01em;
+  transition: color var(--duration-fast) var(--ease-ios);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dashboard-cta:hover,
+.dashboard-cta:focus-visible {
+  color: var(--onyx-white);
+}
+
+.dashboard-cta svg {
+  transition: transform var(--duration-fast) var(--ease-ios);
+}
+
+.dashboard-cta:hover svg,
+.dashboard-cta:focus-visible svg {
+  transform: translateX(4px);
+}
+
+.dashboard-cta__text {
+  border-bottom: 1px solid transparent;
+  padding-bottom: 1px;
+  transition: border-color var(--duration-fast) var(--ease-ios);
+}
+
+.dashboard-cta:hover .dashboard-cta__text,
+.dashboard-cta:focus-visible .dashboard-cta__text {
+  border-bottom-color: var(--onyx-white);
+}
+
+/* Meta-блок: тонкая линия сверху, метрики через разделитель. */
+.dashboard-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 18px 28px;
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.dashboard-meta__pair {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.dashboard-meta__value {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 400;
+  color: var(--onyx-white);
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-meta__label {
+  font-size: 11px;
+  color: var(--onyx-text-muted);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+/* Состояние «нет подписки» — компактная секция между разделителями вместо карточки. */
+.dashboard-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 36px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.dashboard-empty__title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  color: var(--onyx-white);
+}
+
+.dashboard-empty__subtitle {
+  font-size: 14px;
+  color: var(--onyx-text-muted);
+  line-height: 1.5;
+  max-width: 32ch;
+}
+
+/* ─── TARIFFS ─────────────────────────────────────────────────────────────── */
+
+.tariffs-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding-top: 4px;
+}
+
+.tariffs-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tariffs-title {
+  font-family: var(--font-display);
+  font-size: 36px;
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: var(--onyx-white);
+}
+
+.tariffs-subtitle {
+  font-size: 14px;
+  color: var(--onyx-text-muted);
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+  max-width: 38ch;
+}
+
+/* Список тарифов — строки между hairline-разделителями. Без grid, без rounded-card. */
+.tariffs-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.tariff-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 22px 4px 22px 0;
+  background: transparent;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  width: 100%;
+  font-family: var(--font-body);
+  text-align: left;
+  color: var(--onyx-text);
+  cursor: pointer;
+  transition: padding-left var(--duration-fast) var(--ease-ios);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tariff-row:last-child {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tariff-row:hover:not(:disabled),
+.tariff-row:focus-visible:not(:disabled) {
+  padding-left: 14px;
+}
+
+.tariff-row:active:not(:disabled) {
+  transform: scale(0.998);
+}
+
+.tariff-row:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+/* Featured-план: violet bar слева + свечение. */
+.tariff-row--featured {
+  padding-left: 14px;
+}
+
+.tariff-row--featured::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 22px;
+  bottom: 22px;
+  width: 3px;
+  border-radius: 1.5px;
+  background: linear-gradient(180deg, var(--onyx-accent-soft) 0%, var(--onyx-accent) 100%);
+  box-shadow: 0 0 12px rgba(167, 139, 250, 0.45);
+}
+
+.tariff-row__left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tariff-row__name-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.tariff-row__name {
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--onyx-white);
+}
+
+.tariff-row__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  background: rgba(167, 139, 250, 0.12);
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 100px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--onyx-accent-soft);
+}
+
+.tariff-row__meta {
+  font-size: 12px;
+  color: var(--onyx-text-muted);
+  letter-spacing: 0.02em;
+}
+
+.tariff-row__meta--accent {
+  color: var(--onyx-accent-soft);
+}
+
+.tariff-row__right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.tariff-row__price {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.tariff-row__price-value {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--onyx-white);
+  font-variant-numeric: tabular-nums;
+}
+
+.tariff-row__price-currency {
+  font-size: 14px;
+  color: var(--onyx-text-muted);
+}
+
+.tariff-row__period {
+  font-size: 11px;
+  color: var(--onyx-text-muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Состояния loading/error — единый стиль без filled-карточек. */
+.tariffs-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 56px 20px;
+  text-align: center;
+}
+
+.tariffs-status__text {
+  font-size: 14px;
+  color: var(--onyx-text-muted);
+  line-height: 1.5;
+  max-width: 32ch;
+}
+
+.tariffs-status__retry {
+  padding: 10px 22px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 100px;
+  color: var(--onyx-text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  transition: background var(--duration-fast) var(--ease-ios);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tariffs-status__retry:hover,
+.tariffs-status__retry:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tariffs-status__spinner {
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  border-top-color: var(--onyx-accent-soft);
+  border-radius: 50%;
+  animation: dashboard-spin 0.8s linear infinite;
+}
+
+@keyframes dashboard-spin {
+  to { transform: rotate(360deg); }
+}
+
+.tariffs-purchase-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  border-radius: 10px;
+  font-size: 13px;
+  color: rgba(245, 158, 11, 0.95);
+  line-height: 1.4;
+}
+
+.tariffs-purchase-error-dismiss {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 8px;
+  opacity: 0.7;
+  transition: opacity var(--duration-fast) var(--ease-ios);
+}
+
+.tariffs-purchase-error-dismiss:hover {
+  opacity: 1;
+}
+
+/* ─── BALANCE ─────────────────────────────────────────────────────────────── */
+
+.balance-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  padding-top: 4px;
+}
+
+/* Hero баланса — display-serif число как визуальный якорь. Без обёртки-карточки. */
+.balance-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.balance-hero__label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--onyx-text-muted);
+}
+
+.balance-hero__amount {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.balance-hero__value {
+  font-family: var(--font-display);
+  font-size: 64px;
+  font-weight: 400;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  color: var(--onyx-white);
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-hero__currency {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 400;
+  color: var(--onyx-text-muted);
+  font-style: italic;
+}
+
+/* Статусы оплаты — inline-блоки под hero. */
+.balance-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.balance-status--pending {
+  background: rgba(167, 139, 250, 0.08);
+  border: 1px solid rgba(167, 139, 250, 0.22);
+  color: rgba(167, 139, 250, 0.95);
+}
+
+.balance-status--success {
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  color: rgba(16, 185, 129, 0.95);
+}
+
+.balance-status--timeout {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  color: rgba(245, 158, 11, 0.95);
+}
+
+.balance-status__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: currentColor;
+}
+
+.balance-status--pending .balance-status__dot {
+  animation: dashboard-pulse 1.5s ease-in-out infinite;
+}
+
+.balance-status__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.balance-status__actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.balance-status__btn {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  padding: 5px 12px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  transition: background var(--duration-fast) var(--ease-ios);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.balance-status__btn:hover,
+.balance-status__btn:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Секция пополнения — header + input + quick amounts + button. */
+.balance-topup {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.balance-topup__header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.balance-topup__title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  color: var(--onyx-white);
+}
+
+.balance-topup__subtitle {
+  font-size: 13px;
+  color: var(--onyx-text-muted);
+  letter-spacing: 0.01em;
+}
+
+.balance-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.balance-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 14px 32px 14px 0;
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--onyx-white);
+  font-variant-numeric: tabular-nums;
+  transition: border-color var(--duration-fast) var(--ease-ios);
+  -moz-appearance: textfield;
+}
+
+.balance-input::-webkit-outer-spin-button,
+.balance-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.balance-input::placeholder {
+  color: rgba(255, 255, 255, 0.2);
+}
+
+.balance-input:focus {
+  outline: none;
+  border-bottom-color: var(--onyx-accent-soft);
+}
+
+.balance-input:disabled {
+  opacity: 0.5;
+}
+
+.balance-input-suffix {
+  position: absolute;
+  right: 0;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-style: italic;
+  color: var(--onyx-text-muted);
+  pointer-events: none;
+}
+
+.balance-amount-hint {
+  font-size: 12px;
+  color: rgba(245, 158, 11, 0.9);
+  margin-top: -8px;
+}
+
+.balance-quick-amounts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.balance-quick-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 12px 4px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--onyx-text);
+  cursor: pointer;
+  letter-spacing: -0.005em;
+  transition: all var(--duration-fast) var(--ease-ios);
+  -webkit-tap-highlight-color: transparent;
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-quick-btn:hover:not(:disabled),
+.balance-quick-btn:focus-visible:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.balance-quick-btn--active {
+  border-color: var(--onyx-accent);
+  background: rgba(167, 139, 250, 0.08);
+  color: var(--onyx-white);
+}
+
+.balance-quick-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.balance-submit {
+  width: 100%;
+  background: var(--onyx-white);
+  color: #0B0B0C;
+  border: none;
+  border-radius: 12px;
+  padding: 16px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-ios);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.balance-submit:hover:not(:disabled),
+.balance-submit:focus-visible:not(:disabled) {
+  opacity: 0.88;
+}
+
+.balance-submit:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Котик-компаньон в углу. */
+.balance-mascot {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 8px;
+}
+
+.balance-mascot__img {
+  width: 96px;
+  height: auto;
+  opacity: 0.92;
+  transition: transform 0.4s var(--ease-ios), opacity var(--duration-fast) var(--ease-ios);
+}
+
+.balance-mascot__img:hover {
+  transform: translateY(-2px) rotate(-2deg);
+  opacity: 1;
+}
+
+/* ─── PROFILE ─────────────────────────────────────────────────────────────── */
+
+.profile-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding-top: 4px;
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 8px 0 28px;
+}
+
+.profile-avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-avatar-placeholder {
+  color: var(--onyx-text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.profile-name {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  color: var(--onyx-white);
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-username {
+  font-size: 13px;
+  color: var(--onyx-text-muted);
+  letter-spacing: 0.01em;
+}
+
+/* Hairline-разделитель. */
+.profile-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  border: none;
+  margin: 0;
+}
+
+/* Строка подписки — не карточка, а две метки между разделителями. */
+.profile-subscription {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 0;
+}
+
+.profile-subscription__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--onyx-text-muted);
+}
+
+.profile-subscription__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--onyx-text-muted);
+}
+
+.profile-subscription--active .profile-subscription__dot {
+  background: var(--onyx-success);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+}
+
+.profile-subscription__date {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--onyx-white);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.profile-subscription__date--muted {
+  color: var(--onyx-text-muted);
+}
+
+/* Реферальная секция — между разделителями. */
+.profile-referral {
+  padding: 28px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.profile-referral__header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.profile-referral__title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 400;
+  letter-spacing: -0.015em;
+  color: var(--onyx-white);
+}
+
+.profile-referral__subtitle {
+  font-size: 13px;
+  color: var(--onyx-text-muted);
+  line-height: 1.5;
+  max-width: 36ch;
+}
+
+.profile-referral__progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-referral__progress-text {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--onyx-text-muted);
+  letter-spacing: 0.02em;
+}
+
+.profile-referral__count {
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: var(--onyx-white);
+  font-variant-numeric: tabular-nums;
+}
+
+.profile-referral__bar {
+  height: 1.5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.profile-referral__fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--onyx-accent-soft) 0%, var(--onyx-accent) 100%);
+  border-radius: 1px;
+  transform-origin: left center;
+}
+
+.profile-referral__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 100px;
+  padding: 9px 18px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--onyx-text);
+  cursor: pointer;
+  letter-spacing: -0.005em;
+  transition: all var(--duration-fast) var(--ease-ios);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.profile-referral__copy:hover:not(:disabled),
+.profile-referral__copy:focus-visible:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.profile-referral__copy:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.profile-referral__copy--copied {
+  border-color: var(--onyx-success);
+  color: var(--onyx-success);
+}
+
+/* Ссылка поддержки — inline. */
+.profile-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 0;
+  text-decoration: none;
+  color: var(--onyx-text);
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  transition: padding-left var(--duration-fast) var(--ease-ios);
+}
+
+.profile-link:hover,
+.profile-link:focus-visible {
+  padding-left: 8px;
+  color: var(--onyx-white);
+}
+
+.profile-link__arrow {
+  color: var(--onyx-text-muted);
+  transition: transform var(--duration-fast) var(--ease-ios);
+}
+
+.profile-link:hover .profile-link__arrow,
+.profile-link:focus-visible .profile-link__arrow {
+  transform: translateX(4px);
+  color: var(--onyx-white);
+}
+
+/* Котик + цитата — брендовое ДНК, появляется только на экране профиля. */
+.profile-mascot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 32px 0 8px;
+  text-align: center;
+}
+
+.profile-mascot__img {
+  width: 88px;
+  height: auto;
+  opacity: 0.94;
+}
+
+.profile-mascot__quote {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-style: italic;
+  color: var(--onyx-text-muted);
+  letter-spacing: -0.005em;
+  line-height: 1.4;
+  max-width: 28ch;
+}
+
+/* ─── BOTTOM NAV (минималистичная версия) ─────────────────────────────────── */
+
+.bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: rgba(11, 11, 12, 0.78);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  z-index: 50;
+}
+
+.nav-tab-mini {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 4px 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--onyx-text-muted);
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  -webkit-tap-highlight-color: transparent;
+  transition: color var(--duration-fast) var(--ease-ios);
+}
+
+.nav-tab-mini:hover,
+.nav-tab-mini:focus-visible {
+  color: var(--onyx-text);
+}
+
+.nav-tab-mini--active {
+  color: var(--onyx-accent-soft);
+}
+
+.nav-tab-mini--active:hover,
+.nav-tab-mini--active:focus-visible {
+  color: var(--onyx-accent-soft);
+}
+
+.nav-tab-mini__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  transition: transform var(--duration-fast) var(--ease-ios);
+}
+
+.nav-tab-mini--active .nav-tab-mini__icon {
+  transform: scale(1.06);
+}
+
+.nav-tab-mini__label {
+  font-size: 10px;
+  line-height: 1;
+}
+
+/* Активный индикатор — крошечная violet-точка над иконкой. layoutId даёт spring-переход. */
+.nav-tab-mini__indicator {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--onyx-accent-soft);
+  box-shadow: 0 0 6px rgba(167, 139, 250, 0.6);
+}
+
+/* =========================================================
+   PREMIUM PAY-SHEET — шторка пополнения баланса при нехватке
+   Заменяет шаблонный .bottom-sheet-* + .payment-* дизайн.
+   ========================================================= */
+
+.pay-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 100;
+}
+
+.pay-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 101;
+  background: var(--onyx-bg);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-top-left-radius: 28px;
+  border-top-right-radius: 28px;
+  padding: 12px 24px calc(28px + env(safe-area-inset-bottom, 0px));
+  max-width: 600px;
+  margin: 0 auto;
+  max-height: 90vh;
+  overflow-y: auto;
+  font-family: var(--font-body);
+  color: var(--onyx-text);
+  -webkit-overflow-scrolling: touch;
+}
+
+.pay-sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.15);
+  margin: 0 auto 20px;
+  flex-shrink: 0;
+}
+
+.pay-sheet-close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: transparent;
+  border: none;
+  color: var(--onyx-text-muted);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-ios),
+              color var(--duration-fast) var(--ease-ios);
+}
+
+.pay-sheet-close:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--onyx-text);
+}
+
+.pay-sheet-close:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pay-sheet-content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-top: 4px;
+}
+
+/* Eyebrow + huge display-serif amount — визуальный якорь шторки.
+   Асимметричное расположение (не по центру) и контраст масштабов
+   "Не хватает" vs "245 ₽" дают ощущение дорогого интерфейса. */
+.pay-sheet-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--onyx-text-muted);
+  line-height: 1;
+}
+
+.pay-sheet-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.pay-sheet-amount__value {
+  font-family: var(--font-display);
+  font-size: 56px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--onyx-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.pay-sheet-amount__currency {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-style: italic;
+  color: var(--onyx-text-muted);
+  line-height: 1;
+}
+
+.pay-sheet-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  border: none;
+  margin: 0;
+}
+
+.pay-sheet-subtitle {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--onyx-text-muted);
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+
+/* Status pill (pending / success / timeout) — единый стиль с BalanceScreen.
+   currentColor для иконок и бордера — переключение варианта через
+   модификатор --pending/--timeout/--success, без хардкода цветов. */
+.pay-sheet-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid currentColor;
+  background: transparent;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.pay-sheet-status--pending {
+  color: var(--onyx-accent-soft);
+  background: rgba(167, 139, 250, 0.08);
+  border-color: rgba(167, 139, 250, 0.22);
+}
+
+.pay-sheet-status--pending .pay-sheet-status__dot {
+  animation: dashboard-pulse 1.5s ease-in-out infinite;
+}
+
+.pay-sheet-status--success {
+  color: #10B981;
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.22);
+}
+
+.pay-sheet-status--timeout {
+  color: #F59E0B;
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.22);
+}
+
+.pay-sheet-status__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: currentColor;
+}
+
+.pay-sheet-status__text {
+  flex: 1;
+  min-width: 0;
+  letter-spacing: 0.01em;
+}
+
+.pay-sheet-status__btn {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: inherit;
+  padding: 5px 12px;
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  transition: opacity var(--duration-fast) var(--ease-ios);
+}
+
+.pay-sheet-status__btn:hover {
+  opacity: 0.7;
+}
+
+.pay-sheet-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.22);
+  font-size: 13px;
+  line-height: 1.4;
+  color: #F59E0B;
+}
+
+.pay-sheet-cta {
+  width: 100%;
+  background: var(--onyx-white);
+  color: var(--onyx-bg);
+  border: none;
+  border-radius: 14px;
+  padding: 17px 20px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-ios);
+  margin-top: 4px;
+}
+
+.pay-sheet-cta:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.pay-sheet-cta:active:not(:disabled) {
+  transform: scale(0.985);
+}
+
+.pay-sheet-cta:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* =========================================================
+   PREMIUM LOADING / ERROR — full-screen fallbacks в App.tsx
+   ========================================================= */
+
+/* Loading — минималистичный, но не шаблонный. Spinner + eyebrow
+   вместо центрированного "Загрузка...". */
+.loading-screen--premium {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 56px 24px 32px;
+  gap: 16px;
+}
+
+.loading-screen--premium .loading-spinner--minimal {
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--onyx-accent-soft);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.loading-screen--premium .loading-screen__eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--onyx-text-muted);
+  margin-top: 4px;
+}
+
+.loading-screen--premium .loading-screen__title {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--onyx-text);
+  line-height: 1.1;
+}
+
+/* Error — асимметричный layout, display-serif заголовок, hairline divider. */
+.error-screen--premium {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 56px 24px calc(32px + env(safe-area-inset-bottom, 0px));
+  gap: 16px;
+  text-align: left;
+}
+
+.error-screen--premium .error-screen__eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #F59E0B;
+  margin-top: 4px;
+}
+
+.error-screen--premium .error-screen__title {
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  color: var(--onyx-text);
+  line-height: 1.1;
+}
+
+.error-screen--premium .error-screen__divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  border: none;
+  margin: 8px 0;
+  align-self: stretch;
+}
+
+.error-screen--premium .error-screen__text {
+  font-size: 14px;
+  color: var(--onyx-text-muted);
+  line-height: 1.55;
+  letter-spacing: 0.01em;
+}
+
+.error-screen--premium .error-screen__cta {
+  margin-top: 8px;
+  background: var(--onyx-white);
+  color: var(--onyx-bg);
+  border: none;
+  border-radius: 14px;
+  padding: 16px 28px;
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  transition: opacity var(--duration-fast) var(--ease-ios);
+}
+
+.error-screen--premium .error-screen__cta:hover {
+  opacity: 0.88;
+}
+
+.error-screen--premium .error-screen__cta:active {
+  transform: scale(0.985);
 }

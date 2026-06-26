@@ -113,10 +113,10 @@ export function PreparingScreen({
             transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1] }}
           >
             <svg width="80" height="80" viewBox="0 0 80 80" fill="none" aria-hidden="true">
-              <circle cx="40" cy="40" r="38" stroke="#10B981" strokeWidth="2" fill="none" />
+              <circle cx="40" cy="40" r="38" stroke="currentColor" strokeWidth="2" fill="none" />
               <motion.path
                 d="M25 40L35 50L55 30"
-                stroke="#10B981"
+                stroke="currentColor"
                 strokeWidth="3"
                 strokeLinecap="round"
                 strokeLinejoin="round"

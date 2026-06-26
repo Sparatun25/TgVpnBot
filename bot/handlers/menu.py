@@ -336,15 +336,28 @@ def _build_profile_keyboard(
     else:
         rows = [
             [
+                # Без deep-link: открываем Mini App «как есть», чтобы новый
+                # юзер увидел WelcomeScreen с котиком и CTA «Начать бесплатно».
+                # Раньше тут был `?screen=tariffs` — App.tsx по этому флагу
+                # принудительно прыгал на step='dashboard', и онбординг
+                # (welcome → install → preparing → success) полностью
+                # скипался: юзер оказывался на тарифах в дашборде без
+                # приветственного брендового экрана.
+                # Если юзер уже использовал триал — loadProfile в App.tsx
+                # сам перенаправит его на dashboard по has_used_trial=true.
                 InlineKeyboardButton(
                     text="🎁 Активировать 3 дня бесплатно",
-                    web_app={"url": f"{settings.webapp_url}?screen=tariffs"},
+                    web_app={"url": settings.webapp_url},
                 )
             ],
             [
+                # Без deep-link: см. аналогичный комментарий у кнопки
+                # «Активировать 3 дня бесплатно». Новый юзер должен сначала
+                # попасть на WelcomeScreen, а не на пустую вкладку «Баланс»
+                # в дашборде.
                 InlineKeyboardButton(
                     text="💳 Пополнить баланс",
-                    web_app={"url": f"{settings.webapp_url}?screen=balance"},
+                    web_app={"url": settings.webapp_url},
                 )
             ],
         ]

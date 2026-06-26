@@ -237,7 +237,7 @@ export function TopUpBottomSheet({
       {isOpen && (
         <>
           <motion.div
-            className="bottom-sheet-overlay"
+            className="pay-sheet-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -247,7 +247,7 @@ export function TopUpBottomSheet({
           />
           <motion.div
             ref={sheetRef}
-            className="bottom-sheet"
+            className="pay-sheet"
             initial={{ y: '100%' }}
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
@@ -265,10 +265,10 @@ export function TopUpBottomSheet({
             aria-modal="true"
             aria-label="Пополнение баланса"
           >
-            <div className="bottom-sheet-handle" />
+            <div className="pay-sheet-handle" />
 
             <button
-              className="bottom-sheet-close"
+              className="pay-sheet-close"
               onClick={handleClose}
               disabled={!canClose}
               aria-label="Закрыть"
@@ -278,25 +278,48 @@ export function TopUpBottomSheet({
               </svg>
             </button>
 
-            <div className="bottom-sheet-content">
-              <h3 className="bottom-sheet-title">Недостаточно средств</h3>
-              <p className="bottom-sheet-subtitle">
-                Для покупки не хватает {deficit} ₽. Пополнить баланс через СБП?
+            <div className="pay-sheet-content">
+              <div>
+                <div className="pay-sheet-eyebrow">Не хватает</div>
+                <div className="pay-sheet-amount">
+                  <motion.span
+                    className="pay-sheet-amount__value"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.5, delay: 0.15 }}
+                  >
+                    {deficit}
+                  </motion.span>
+                  <motion.span
+                    className="pay-sheet-amount__currency"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.5, delay: 0.2 }}
+                  >
+                    ₽
+                  </motion.span>
+                </div>
+              </div>
+
+              <hr className="pay-sheet-divider" aria-hidden="true" />
+
+              <p className="pay-sheet-subtitle">
+                Пополнить через СБП для оплаты этого тарифа.
               </p>
 
               {paymentStatus === 'pending' && (
                 <motion.div
-                  className="payment-pending"
+                  className="pay-sheet-status pay-sheet-status--pending"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}
                   role="status"
                   aria-live="polite"
                 >
-                  <div className="pending-spinner" aria-hidden="true" />
-                  <span>Ожидание подтверждения оплаты...</span>
+                  <span className="pay-sheet-status__dot" aria-hidden="true" />
+                  <span className="pay-sheet-status__text">Ожидание подтверждения оплаты…</span>
                   <button
-                    className="payment-pending-cancel"
+                    className="pay-sheet-status__btn"
                     onClick={handleClose}
                     aria-label="Отменить ожидание оплаты"
                   >
@@ -307,65 +330,63 @@ export function TopUpBottomSheet({
 
               {paymentStatus === 'timeout' && (
                 <motion.div
-                  className="payment-timeout"
+                  className="pay-sheet-status pay-sheet-status--timeout"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}
                   role="alert"
                 >
-                  <span>Время ожидания истекло. Если оплата прошла, попробуйте ещё раз.</span>
-                  <div className="payment-timeout-actions">
-                    <button
-                      className="payment-timeout-retry"
-                      onClick={handleRetryPending}
-                    >
-                      Повторить
-                    </button>
-                  </div>
+                  <span className="pay-sheet-status__dot" aria-hidden="true" />
+                  <span className="pay-sheet-status__text">
+                    Время ожидания истекло. Если оплата прошла, попробуйте ещё раз.
+                  </span>
+                  <button className="pay-sheet-status__btn" onClick={handleRetryPending}>
+                    Повторить
+                  </button>
                 </motion.div>
               )}
 
               {paymentStatus === 'success' && (
                 <motion.div
-                  className="payment-success"
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
+                  className="pay-sheet-status pay-sheet-status--success"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}
                   role="status"
                   aria-live="polite"
                 >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2">
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    aria-hidden="true"
+                  >
                     <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
-                  <span>Оплата подтверждена!</span>
+                  <span className="pay-sheet-status__text">Оплата подтверждена</span>
                 </motion.div>
               )}
 
               {paymentError && (
-                <div className="payment-error" role="alert">
+                <div className="pay-sheet-error" role="alert">
                   {paymentError}
                 </div>
               )}
 
               <motion.button
-                className="bottom-sheet-cta"
+                className="pay-sheet-cta"
                 onClick={handleTopUp}
                 disabled={isProcessing || paymentStatus !== 'idle'}
-                whileTap={{ scale: 0.96 }}
+                whileTap={{ scale: 0.985 }}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.2 }}
               >
-                {isProcessing ? 'Создание платежа...' : `Пополнить на ${deficit} ₽`}
+                {isProcessing ? 'Создание платежа…' : `Пополнить на ${deficit} ₽`}
               </motion.button>
-
-              <button
-                className="bottom-sheet-cancel"
-                onClick={handleClose}
-                disabled={!canClose}
-              >
-                Отмена
-              </button>
             </div>
           </motion.div>
         </>

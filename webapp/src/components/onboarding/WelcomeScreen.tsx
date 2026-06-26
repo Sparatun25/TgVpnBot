@@ -207,19 +207,6 @@ export function WelcomeScreen({ onStart }: WelcomeScreenProps) {
         </div>
       </motion.div>
 
-      {/* Social proof с "живым" индикатором */}
-      <motion.div
-        className="welcome-social-proof"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.5, delay: 1.7 }}
-      >
-        <span className="welcome-social-proof__pulse" />
-        <span>
-          <strong>14 280</strong> пользователей уже защищены
-        </span>
-      </motion.div>
-
       {/* Тонкий hint к MainButton внизу — анимированная стрелка-намёк,
           что следующий шаг ждёт внизу. */}
       <motion.div

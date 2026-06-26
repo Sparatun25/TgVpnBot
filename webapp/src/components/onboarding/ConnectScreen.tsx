@@ -252,7 +252,7 @@ export function ConnectScreen({ connectionUrl, onConnect }: ConnectScreenProps) 
             transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
           >
             <div className="launch-failed-icon">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M12 8V12M12 16H12.01" strokeLinecap="round" />
               </svg>

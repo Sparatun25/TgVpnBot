@@ -189,25 +189,25 @@ export function TariffsScreen({
         <h2 className="screen-title">Почему пользователи выбирают Onyx VPN</h2>
         <ul className="value-points">
           <li className="value-point">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span>Безлимитный трафик</span>
           </li>
           <li className="value-point">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span>Высокая скорость</span>
           </li>
           <li className="value-point">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span>Поддержка нескольких устройств</span>
           </li>
           <li className="value-point">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path d="M20 6L9 17L4 12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             <span>Быстрое подключение</span>

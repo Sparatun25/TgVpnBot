@@ -234,29 +234,28 @@ export default function App() {
     loadProfile()
   }, [])
 
-  // Loading state
+  // Loading state — минималистичный, асимметричный, не центрированный «Загрузка…».
   if (loading && !profile) {
     return (
-      <div className="loading-screen" role="status" aria-live="polite">
-        <div className="loading-spinner" aria-hidden="true" />
-        <div className="loading-text">Загрузка...</div>
+      <div className="loading-screen--premium" role="status" aria-live="polite">
+        <div className="loading-spinner--minimal" aria-hidden="true" />
+        <div className="loading-screen__eyebrow">Onyx VPN</div>
+        <div className="loading-screen__title">Подключаемся…</div>
       </div>
     )
   }
 
-  // Error state
+  // Error state — асимметричный, display-serif заголовок, hairline divider,
+  // одна CTA. Иконка ❗ убрана: статус передаётся текстом + цветом eyebrow.
   if (error && !profile) {
     return (
-      <div className="error-screen" role="alert">
-        <div className="error-icon" aria-hidden="true">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#F59E0B" strokeWidth="2">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M12 8V12M12 16H12.01" strokeLinecap="round" />
-          </svg>
-        </div>
-        <div className="error-text">{error}</div>
-        <button className="error-button" onClick={() => loadProfile()}>
-          Повторить
+      <div className="error-screen--premium" role="alert">
+        <div className="error-screen__eyebrow">Ошибка загрузки</div>
+        <div className="error-screen__title">Не удалось загрузить профиль</div>
+        <hr className="error-screen__divider" aria-hidden="true" />
+        <div className="error-screen__text">{error}</div>
+        <button className="error-screen__cta" onClick={() => loadProfile()}>
+          Попробовать ещё раз
         </button>
       </div>
     )
@@ -313,6 +312,7 @@ export default function App() {
                 <DashboardScreen
                   key="dashboard"
                   trialExpiresAt={profile?.subscription.expires_at ?? null}
+                  traffic={profile?.traffic ?? null}
                   onBuySubscription={handleBuySubscription}
                 />
               )}

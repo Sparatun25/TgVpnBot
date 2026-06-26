@@ -13,6 +13,12 @@ export interface ProfileData {
     expires_at: string | null
     connection_url: string | null
   }
+  traffic: {
+    total_bytes_received: number
+    total_bytes_sent: number
+    last_handshake_at: string | null
+    is_online: boolean
+  }
   has_used_trial: boolean
   bot_username: string | null
   referral_link: string | null

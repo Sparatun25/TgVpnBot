@@ -103,7 +103,7 @@ export function InstallScreen({ onInstalled }: InstallScreenProps) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: easeOut, delay: 0.3 }}
       >
-        Откройте магазин, установите приложение и&nbsp;вернитесь сюда. Это займёт меньше минуты.
+        Откройте магазин, установите приложение и&nbsp;вернитесь сюда.
       </motion.p>
 
       <motion.div
